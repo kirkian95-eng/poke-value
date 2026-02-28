@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}About - Pokemon TCG EV Calculator{% endblock %}
+{% block content %}
+<h1>How EV is Calculated</h1>
+
+<div class="section">
+    <h2>Expected Value Formula</h2>
+    <p>The Expected Value (EV) of a booster pack represents the average dollar value you'd receive
+    if you opened many packs. It's calculated by multiplying each card's market price by its
+    probability of being pulled, then summing across all cards in the set.</p>
+
+    <p style="margin-top:1rem;"><strong>EV = &Sigma; P(card) &times; Price(card)</strong> for all cards in the set.</p>
+</div>
+
+<div class="section">
+    <h2>Pack Slot Model</h2>
+    <p>Modern Pokemon TCG packs (Scarlet & Violet era) contain 10 game cards with three slot types:</p>
+
+    <table>
+        <thead>
+            <tr><th>Slot Type</th><th>Count</th><th>How It Works</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Guaranteed Common</strong></td>
+                <td>4</td>
+                <td>4 random commons from the set's common pool. P(specific card) = 4 / N<sub>common</sub></td>
+            </tr>
+            <tr>
+                <td><strong>Guaranteed Uncommon</strong></td>
+                <td>3</td>
+                <td>3 random uncommons from the set's uncommon pool. P(specific card) = 3 / N<sub>uncommon</sub></td>
+            </tr>
+            <tr>
+                <td><strong>Reverse Holo</strong></td>
+                <td>2</td>
+                <td>2 random reverse holo cards from the common+uncommon+rare pool. Priced at ~50% of normal value.</td>
+            </tr>
+            <tr>
+                <td><strong>Hit Slot (Rare+)</strong></td>
+                <td>1</td>
+                <td>One card that can range from base Rare all the way up to Hyper Rare, based on pull rate probabilities.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Hit Slot Probability</h2>
+    <p>The "hit slot" is where the value comes from. It has a probability distribution across rarities.
+    These probabilities come from community-compiled data (PokeBeach, Reddit, YouTube openings) since
+    The Pokemon Company does not officially publish pull rates.</p>
+
+    <p style="margin-top:0.5rem;">P(specific card) = P(rarity) / N<sub>cards of that rarity</sub></p>
+
+    <p style="margin-top:0.5rem;">Default rates are based on Scarlet & Violet era averages and can be
+    overridden per set for more accurate calculations.</p>
+</div>
+
+<div class="section">
+    <h2>God Pack Adjustment</h2>
+    <p>Some sets include "God Packs" where every card in the pack is a rare or higher. When a set has
+    god packs, the EV is adjusted:</p>
+
+    <p style="margin-top:0.5rem;"><strong>EV = (1 - P<sub>god</sub>) &times; Normal EV + P<sub>god</sub> &times; God Pack EV</strong></p>
+
+    <p style="margin-top:0.5rem;">God pack odds are typically 1 in 600-1000 packs depending on the set.</p>
+</div>
+
+<div class="section">
+    <h2>Data Sources</h2>
+    <table>
+        <thead><tr><th>Data</th><th>Source</th></tr></thead>
+        <tbody>
+            <tr><td>Card database</td><td><a href="https://github.com/PokemonTCG/pokemon-tcg-data">PokemonTCG/pokemon-tcg-data</a> (GitHub)</td></tr>
+            <tr><td>Pricing (EUR)</td><td><a href="https://tcgdex.dev/">TCGdex API</a> (Cardmarket prices)</td></tr>
+            <tr><td>Pricing (USD)</td><td>PokéWallet API (TCGPlayer prices, when available)</td></tr>
+            <tr><td>Pull rates</td><td>Community-compiled from PokeBeach, Reddit, YouTube openings</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Disclaimers</h2>
+    <ul style="padding-left:1.5rem;">
+        <li>Pull rates are estimates based on community data, not official figures.</li>
+        <li>Prices update periodically, not in real-time.</li>
+        <li>EV represents mathematical expectation — individual pack results vary widely.</li>
+        <li>Most sealed Pokemon products have negative EV (you pay more than the cards are worth on average).</li>
+        <li>Reverse holo pricing uses a 50% approximation of normal card price.</li>
+    </ul>
+</div>
+{% endblock %}

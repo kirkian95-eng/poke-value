@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ set_info.name }} - EV Calculator{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
+    {% if set_info.logo_url %}
+    <img src="{{ set_info.logo_url }}" alt="{{ set_info.name }}" style="height:60px;">
+    {% endif %}
+    <div>
+        <h1 style="margin-bottom:0;">{{ set_info.name }}</h1>
+        <div style="color:#78909c;">{{ set_info.series or '' }} &middot; {{ set_info.release_date or 'Unknown' }} &middot; {{ set_info.total_cards or '?' }} cards &middot; Era: {{ set_info.era or 'unknown' }}</div>
+    </div>
+</div>
+
+<!-- EV Summary -->
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">EV Per Pack</div>
+        <div class="value {% if ev_cache and ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache and ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% else %}ev-negative{% endif %}">
+            {% if ev_cache %}${{ "%.2f"|format(ev_cache.ev_per_pack) }}{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Pack MSRP</div>
+        <div class="value">$4.49</div>
+    </div>
+    <div class="stat">
+        <div class="label">Value Ratio</div>
+        <div class="value {% if ev_cache and ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache and ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% else %}ev-negative{% endif %}">
+            {% if ev_cache %}{{ "%.0f"|format(ev_cache.ev_per_pack / 4.49 * 100) }}%{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Cards Priced</div>
+        <div class="value" style="color:#64b5f6;">
+            {{ cards|selectattr('tcg_market')|list|length + cards|selectattr('cm_trend')|list|length }}/{{ cards|length }}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Last Calculated</div>
+        <div class="value" style="font-size:0.9rem;color:#78909c;">
+            {% if ev_cache %}{{ ev_cache.calculated_at[:10] }}{% else %}Never{% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- God Pack Info -->
+{% if god_packs %}
+<div class="section">
+    {% for gp in god_packs %}
+    <div class="god-pack-info">
+        <h3 style="color:#ce93d8;">{{ gp.name or 'God Pack' }}</h3>
+        <p>Odds: <strong>1 in {{ "%.0f"|format(1/gp.odds) }}</strong> packs
+        {% if gp.description %} &mdash; {{ gp.description }}{% endif %}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- EV Breakdown by Rarity -->
+{% if ev_breakdown %}
+<div class="section">
+    <h2>EV Breakdown by Rarity</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Rarity</th>
+                <th>Slot Type</th>
+                <th class="text-right">Cards</th>
+                <th class="text-right">Avg Price</th>
+                <th class="text-right">P(each)</th>
+                <th class="text-right">EV Contribution</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in ev_breakdown %}
+            <tr>
+                <td>{{ b.rarity }}</td>
+                <td>{{ b.slot_type }}</td>
+                <td class="text-right">{{ b.card_count }}</td>
+                <td class="text-right">${{ "%.2f"|format(b.avg_price) }}</td>
+                <td class="text-right">{{ "%.4f"|format(b.probability_each) }}</td>
+                <td class="text-right">${{ "%.4f"|format(b.ev_contribution) }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:bold;border-top:2px solid #0f3460;">
+                <td colspan="5">Total Pack EV</td>
+                <td class="text-right">${{ "%.2f"|format(ev_cache.ev_per_pack) if ev_cache else '0.00' }}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Pull Rates -->
+{% if pull_rates %}
+<div class="section">
+    <h2>Pull Rates</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Rarity</th>
+                <th>Slot Type</th>
+                <th class="text-right">Count/Pack</th>
+                <th class="text-right">Probability</th>
+                <th class="text-right">Approx Odds</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pr in pull_rates %}
+            <tr>
+                <td>{{ pr.rarity }}</td>
+                <td>{{ pr.slot_type }}</td>
+                <td class="text-right">{{ pr.guaranteed_count if pr.guaranteed_count else '-' }}</td>
+                <td class="text-right">{{ "%.4f"|format(pr.probability_per_pack) }}</td>
+                <td class="text-right">
+                    {% if pr.probability_per_pack > 0 and pr.probability_per_pack < 1 %}
+                    1 in {{ "%.0f"|format(1/pr.probability_per_pack) }}
+                    {% elif pr.probability_per_pack >= 1 %}
+                    Guaranteed
+                    {% endif %}
+                </td>
+                <td style="color:#78909c;">{{ pr.notes or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Full Card List -->
+<div class="section">
+    <h2>All Cards</h2>
+    <div class="controls">
+        <input type="text" id="card-search" placeholder="Search cards..." oninput="filterCards()">
+        <select id="rarity-filter" onchange="filterCards()">
+            <option value="">All Rarities</option>
+            {% for r in cards|map(attribute='rarity')|unique|sort %}
+            {% if r %}<option value="{{ r }}">{{ r }}</option>{% endif %}
+            {% endfor %}
+        </select>
+    </div>
+    <table id="card-table">
+        <thead>
+            <tr>
+                <th onclick="sortTable(0)">#</th>
+                <th onclick="sortTable(1)">Name</th>
+                <th onclick="sortTable(2)">Rarity</th>
+                <th onclick="sortTable(3)" class="text-right">TCG Market $</th>
+                <th onclick="sortTable(4)" class="text-right">CM Trend (EUR)</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in cards %}
+            <tr data-name="{{ c.name|lower }}" data-rarity="{{ c.rarity or '' }}">
+                <td>{{ c.number }}</td>
+                <td>{{ c.name }}</td>
+                <td>{{ c.rarity or 'Unknown' }}</td>
+                <td class="text-right">{% if c.tcg_market %}${{ "%.2f"|format(c.tcg_market) }}{% else %}-{% endif %}</td>
+                <td class="text-right">{% if c.cm_trend %}{{ "%.2f"|format(c.cm_trend) }}{% else %}-{% endif %}</td>
+                <td style="color:#78909c;">{{ c.price_source or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function filterCards() {
+    const search = document.getElementById('card-search').value.toLowerCase();
+    const rarity = document.getElementById('rarity-filter').value;
+    document.querySelectorAll('#card-table tbody tr').forEach(row => {
+        const name = row.dataset.name;
+        const rowRarity = row.dataset.rarity;
+        let show = true;
+        if (search && !name.includes(search)) show = false;
+        if (rarity && rowRarity !== rarity) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const table = document.getElementById('card-table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aVal = a.children[col].textContent.trim().replace('$', '').replace('-', '0');
+        let bVal = b.children[col].textContent.trim().replace('$', '').replace('-', '0');
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return sortDir[col] ? aNum - bNum : bNum - aNum;
+        }
+        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}
