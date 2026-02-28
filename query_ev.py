@@ -68,6 +68,27 @@ def query_ev(search_term):
 
     conn.close()
 
+    # Pack value distribution stats (import lazily to avoid circular deps)
+    dist_stats = {}
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from engine.ev_calculator import calculate_pack_distribution
+        dist = calculate_pack_distribution(set_id)
+        if dist and dist.get("stats"):
+            s = dist["stats"]
+            dist_stats = {
+                "median_pack": s["median"],
+                "p_beat_msrp_pct": s["p_profit"],
+                "p_10_plus_pct": s["p_10"],
+                "p_20_plus_pct": s["p_20"],
+                "p_50_plus_pct": s["p_50"],
+                "p90_value": s["p90"],
+                "p99_value": s["p99"],
+                "base_value": s["base_value"],
+            }
+    except Exception:
+        pass
+
     msrp = row["pack_price"] or 4.49
     output = {
         "set_name": row["name"],
@@ -90,6 +111,8 @@ def query_ev(search_term):
             for r in rarity_summary
         ],
     }
+    if dist_stats:
+        output["distribution"] = dist_stats
     return output
 
 

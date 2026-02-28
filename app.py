@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from database.connection import get_db
 from database.schema import init_db
-from engine.ev_calculator import calculate_set_ev
+from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution
 
 app = Flask(__name__)
 
@@ -71,6 +71,9 @@ def set_detail(set_id):
 
     ev_breakdown = json.loads(ev_cache["ev_breakdown"]) if ev_cache and ev_cache["ev_breakdown"] else []
 
+    # Calculate pack value distribution
+    distribution = calculate_pack_distribution(set_id)
+
     return render_template("set_detail.html",
         set_info=set_info,
         cards=cards,
@@ -78,6 +81,7 @@ def set_detail(set_id):
         ev_breakdown=ev_breakdown,
         pull_rates=pull_rates,
         god_packs=god_packs,
+        distribution=distribution,
     )
 
 
@@ -96,4 +100,4 @@ def about():
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)

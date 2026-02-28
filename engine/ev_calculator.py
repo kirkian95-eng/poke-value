@@ -215,6 +215,189 @@ def _cache_ev(set_id, result):
         ))
 
 
+def calculate_pack_distribution(set_id):
+    """
+    Calculate the full probability distribution of pack values.
+
+    Every pack has a fixed base value from guaranteed slots (commons, uncommons,
+    reverse holos). The variance comes from the hit slot, which can land on any
+    hit-eligible card. This function computes the discrete distribution over all
+    possible hit slot outcomes.
+
+    Returns dict with:
+      - outcomes: list of {value, probability, card_name, rarity} sorted by value
+      - histogram: list of {label, probability, min_val, max_val} bucketed for display
+      - stats: {median, p75, p90, p99, p_profit, p_10, p_20, p_50, base_value, msrp}
+    """
+    from config import DEFAULT_PACK_MSRP
+
+    pull_rates = get_set_pull_rates(set_id)
+
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT c.id, c.name, c.number, c.rarity, c.supertype,
+                   p.tcg_market, p.cm_avg, p.cm_trend
+            FROM cards c
+            LEFT JOIN prices p ON c.id = p.card_id
+            WHERE c.set_id = ?
+        """, (set_id,)).fetchall()
+
+    cards = [dict(r) for r in rows]
+    if not cards:
+        return {"outcomes": [], "histogram": [], "stats": {}}
+
+    by_rarity = {}
+    for card in cards:
+        r = card.get("rarity") or "Unknown"
+        by_rarity.setdefault(r, []).append(card)
+
+    # 1. Calculate base_value from guaranteed + reverse holo slots
+    base_value = 0.0
+    for rate in pull_rates:
+        rarity = rate["rarity"]
+        slot_type = rate["slot_type"]
+        guaranteed = rate["guaranteed_count"]
+
+        if slot_type == "reverse_holo":
+            reverse_cards = []
+            for r in ("Common", "Uncommon", "Rare", "Rare Holo"):
+                reverse_cards.extend(by_rarity.get(r, []))
+            n_rev = len(reverse_cards)
+            if n_rev == 0:
+                continue
+            for card in reverse_cards:
+                price = _get_price(card) * 0.5
+                p_card = guaranteed / n_rev
+                base_value += p_card * price
+
+        elif slot_type == "guaranteed":
+            rarity_cards = by_rarity.get(rarity, [])
+            n_cards = len(rarity_cards)
+            if n_cards == 0:
+                continue
+            p_each = guaranteed / n_cards
+            for card in rarity_cards:
+                base_value += p_each * _get_price(card)
+
+    # 2. Build distribution from hit slot outcomes
+    outcomes = []
+    for rate in pull_rates:
+        if rate["slot_type"] != "hit_slot":
+            continue
+        rarity = rate["rarity"]
+        prob_rarity = rate["probability_per_pack"]
+        rarity_cards = by_rarity.get(rarity, [])
+        n_cards = len(rarity_cards)
+        if n_cards == 0:
+            continue
+
+        p_each = prob_rarity / n_cards
+        for card in rarity_cards:
+            card_price = _get_price(card)
+            pack_value = round(base_value + card_price, 2)
+            outcomes.append({
+                "value": pack_value,
+                "probability": p_each,
+                "card_name": card["name"],
+                "rarity": rarity,
+            })
+
+    if not outcomes:
+        return {"outcomes": [], "histogram": [], "stats": {}}
+
+    # Sort by value
+    outcomes.sort(key=lambda x: x["value"])
+
+    # 3. Compute summary stats
+    total_prob = sum(o["probability"] for o in outcomes)
+
+    # Cumulative probability for percentiles
+    cum = 0.0
+    median = outcomes[-1]["value"]
+    p75 = outcomes[-1]["value"]
+    p90 = outcomes[-1]["value"]
+    p99 = outcomes[-1]["value"]
+    found_median = found_p75 = found_p90 = found_p99 = False
+
+    for o in outcomes:
+        cum += o["probability"]
+        frac = cum / total_prob if total_prob > 0 else 0
+        if not found_median and frac >= 0.50:
+            median = o["value"]
+            found_median = True
+        if not found_p75 and frac >= 0.75:
+            p75 = o["value"]
+            found_p75 = True
+        if not found_p90 and frac >= 0.90:
+            p90 = o["value"]
+            found_p90 = True
+        if not found_p99 and frac >= 0.99:
+            p99 = o["value"]
+            found_p99 = True
+
+    # P(pack >= threshold) = sum of probabilities where value >= threshold
+    msrp = DEFAULT_PACK_MSRP
+    p_profit = sum(o["probability"] for o in outcomes if o["value"] >= msrp) / total_prob if total_prob > 0 else 0
+    p_10 = sum(o["probability"] for o in outcomes if o["value"] >= 10) / total_prob if total_prob > 0 else 0
+    p_20 = sum(o["probability"] for o in outcomes if o["value"] >= 20) / total_prob if total_prob > 0 else 0
+    p_50 = sum(o["probability"] for o in outcomes if o["value"] >= 50) / total_prob if total_prob > 0 else 0
+
+    # 4. Build histogram bins
+    max_val = max(o["value"] for o in outcomes)
+    if max_val <= 10:
+        bin_edges = [0, 1, 2, 3, 4, 5, 7, 10]
+    elif max_val <= 30:
+        bin_edges = [0, 1, 2, 3, 5, 10, 15, 20, 30]
+    elif max_val <= 60:
+        bin_edges = [0, 2, 4.49, 5, 10, 20, 30, 50, 60]
+    else:
+        bin_edges = [0, 2, 4.49, 5, 10, 20, 50, 100, max_val + 1]
+
+    # Ensure max_val is covered
+    if bin_edges[-1] <= max_val:
+        bin_edges.append(max_val + 1)
+
+    histogram = []
+    for i in range(len(bin_edges) - 1):
+        lo = bin_edges[i]
+        hi = bin_edges[i + 1]
+        bin_prob = sum(o["probability"] for o in outcomes if lo <= o["value"] < hi)
+        bin_pct = bin_prob / total_prob * 100 if total_prob > 0 else 0
+        if lo == 0:
+            label = f"< ${hi:.0f}" if hi == int(hi) else f"< ${hi:.2f}"
+        elif i == len(bin_edges) - 2:
+            label = f"${lo:.0f}+" if lo == int(lo) else f"${lo:.2f}+"
+        else:
+            lo_s = f"${lo:.0f}" if lo == int(lo) else f"${lo:.2f}"
+            hi_s = f"${hi:.0f}" if hi == int(hi) else f"${hi:.2f}"
+            label = f"{lo_s}-{hi_s}"
+        histogram.append({
+            "label": label,
+            "probability": round(bin_pct, 1),
+            "min_val": lo,
+            "max_val": hi,
+        })
+
+    stats = {
+        "median": round(median, 2),
+        "p75": round(p75, 2),
+        "p90": round(p90, 2),
+        "p99": round(p99, 2),
+        "p_profit": round(p_profit * 100, 1),
+        "p_10": round(p_10 * 100, 1),
+        "p_20": round(p_20 * 100, 1),
+        "p_50": round(p_50 * 100, 1),
+        "base_value": round(base_value, 2),
+        "msrp": msrp,
+    }
+
+    return {
+        "outcomes": outcomes,
+        "histogram": histogram,
+        "stats": stats,
+    }
+
+
 def get_card_ev_details(set_id):
     """Get per-card EV contribution details for display."""
     pull_rates = get_set_pull_rates(set_id)

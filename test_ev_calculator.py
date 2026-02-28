@@ -21,7 +21,7 @@ config.DB_PATH = _test_db.name
 
 from database.connection import get_db
 from database.schema import init_db, SCHEMA_SQL
-from engine.ev_calculator import calculate_set_ev, _get_price, _compute_god_pack_ev
+from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution, _get_price, _compute_god_pack_ev
 from engine.pull_rates import get_set_pull_rates, get_god_pack_data
 
 
@@ -379,6 +379,76 @@ class TestComputeGodPackEV(unittest.TestCase):
 
     def test_empty_composition(self):
         self.assertEqual(_compute_god_pack_ev([], []), 0.0)
+
+
+class TestPackDistribution(unittest.TestCase):
+    """Test the pack value distribution calculation."""
+
+    def test_distribution_returns_required_fields(self):
+        result = calculate_pack_distribution("test1")
+        self.assertIn("outcomes", result)
+        self.assertIn("histogram", result)
+        self.assertIn("stats", result)
+
+    def test_probabilities_sum_to_hit_slot_total(self):
+        """Outcome probabilities should sum to the total hit slot probability for present rarities.
+        ACE SPEC (0.048) has no cards in test set, so total = 0.974 - 0.048 = 0.926."""
+        result = calculate_pack_distribution("test1")
+        total = sum(o["probability"] for o in result["outcomes"])
+        expected = 0.55 + 0.20 + 0.09 + 0.065 + 0.015 + 0.006  # all except ACE SPEC
+        self.assertAlmostEqual(total, expected, places=3,
+            msg=f"Outcome probabilities sum to {total}, expected {expected}")
+
+    def test_median_exists_and_reasonable(self):
+        """Median pack value should exist and be positive."""
+        result = calculate_pack_distribution("test1")
+        self.assertIn("median", result["stats"])
+        self.assertGreater(result["stats"]["median"], 0)
+
+    def test_p_ge_zero_is_100(self):
+        """P(pack >= $0) should be 100% — every pack is worth something."""
+        result = calculate_pack_distribution("test1")
+        # All outcomes have value > 0 since base_value > 0
+        p_zero = sum(o["probability"] for o in result["outcomes"] if o["value"] >= 0)
+        total = sum(o["probability"] for o in result["outcomes"])
+        self.assertAlmostEqual(p_zero / total, 1.0, places=4)
+
+    def test_base_value_matches_guaranteed_ev(self):
+        """
+        Base value should equal guaranteed slot EV.
+        Common: 4/40 * 40*0.10 = $0.40
+        Uncommon: 3/30 * 30*0.20 = $0.60
+        Reverse Holo: 2/85 * 17.50 * 0.50 = $0.2059
+        Total base ≈ $1.2059
+        """
+        result = calculate_pack_distribution("test1")
+        expected_base = 0.40 + 0.60 + 0.2059
+        self.assertAlmostEqual(result["stats"]["base_value"], expected_base, delta=0.02)
+
+    def test_outcome_count_matches_hit_cards(self):
+        """Should have one outcome per hit-slot-eligible card (45 total: 15 Rare + 10 DR + 8 IR + 6 UR + 4 SIR + 2 HR)."""
+        result = calculate_pack_distribution("test1")
+        self.assertEqual(len(result["outcomes"]), 45)
+
+    def test_histogram_bins_cover_all_outcomes(self):
+        """Histogram bin probabilities should sum to ~100%."""
+        result = calculate_pack_distribution("test1")
+        total_pct = sum(b["probability"] for b in result["histogram"])
+        self.assertAlmostEqual(total_pct, 100.0, delta=1.0)
+
+    def test_percentiles_monotonic(self):
+        """Percentiles should be non-decreasing: median <= p75 <= p90 <= p99."""
+        result = calculate_pack_distribution("test1")
+        s = result["stats"]
+        self.assertLessEqual(s["median"], s["p75"])
+        self.assertLessEqual(s["p75"], s["p90"])
+        self.assertLessEqual(s["p90"], s["p99"])
+
+    def test_nonexistent_set_empty(self):
+        """Distribution for nonexistent set should return empty."""
+        result = calculate_pack_distribution("nonexistent-set")
+        self.assertEqual(result["outcomes"], [])
+        self.assertEqual(result["histogram"], [])
 
 
 class TestEdgeCases(unittest.TestCase):
