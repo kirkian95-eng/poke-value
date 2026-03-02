@@ -116,7 +116,7 @@ def query_ev(search_term):
         conn.close()
         return {
             "error": f'Set "{row["name"]}" ({set_id}) found but has no price data yet.',
-            "fix": f"Run: python3 /home/ubuntu/pokemon-tcg-ev/cli.py update-prices --set {set_id} --no-pokewallet && python3 /home/ubuntu/pokemon-tcg-ev/cli.py calc-ev --set {set_id}",
+            "fix": f"Run: python3 cli.py update-prices --set {set_id} && python3 cli.py calc-ev --set {set_id}",
         }
 
     # Top 10 most valuable cards
