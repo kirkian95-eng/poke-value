@@ -33,16 +33,71 @@ def fetch_tcgcsv_groups():
     return list(reader)
 
 
+# Manual overrides for sets where fuzzy matching fails.
+# Our set_id -> TCGCSV groupId (verified against Groups.csv)
+_GROUP_OVERRIDES = {
+    # Base sets: TCGCSV uses "and" not "&", or drops prefix
+    "sm1": "1863",      # Sun & Moon -> SM Base Set
+    "dp1": "1430",      # Diamond & Pearl -> Diamond and Pearl
+    "bw1": "1400",      # Black & White -> Black and White
+    "ex1": "1393",      # Ruby & Sapphire -> Ruby and Sapphire
+    "hgss1": "1402",    # HeartGold & SoulSilver -> HeartGold SoulSilver
+    "ecard1": "1375",   # Expedition Base Set -> Expedition
+    # HGSS: our names have "HS—" prefix with em-dash
+    "hgss4": "1381",    # HS—Triumphant -> Triumphant
+    "hgss2": "1399",    # HS—Unleashed -> Unleashed
+    "hgss3": "1403",    # HS—Undaunted -> Undaunted
+    # Sub-sets / vaults
+    "swsh45sv": "2781", # Shining Fates Shiny Vault
+    "sma": "2594",      # Hidden Fates Shiny Vault
+    "swsh12pt5gg": "17689",  # Crown Zenith Galarian Gallery
+    # Special characters / names
+    "pgo": "3064",      # Pokémon GO -> Pokemon GO
+    "ru1": "1433",      # Pokémon Rumble -> Rumble
+    # Promo sets
+    "svp": "22872",     # SV Black Star Promos -> SV: Scarlet & Violet Promo Cards
+    "swshp": "2545",    # SWSH Black Star Promos -> SWSH: Sword & Shield Promo Cards
+    "smp": "1861",      # SM Black Star Promos -> SM Promos
+    "xyp": "1451",      # XY Black Star Promos -> XY Promos
+    "bwp": "1407",      # BW Black Star Promos -> Black and White Promos
+    "dpp": "1421",      # DP Black Star Promos -> Diamond and Pearl Promos
+    "hsp": "1453",      # HGSS Black Star Promos -> HGSS Promos
+    "basep": "1418",    # Wizards Black Star Promos -> WoTC Promo
+    "np": "1423",       # Nintendo Black Star Promos -> Nintendo Promos
+    "bp": "1455",       # Best of Game -> Best of Promos
+    # McDonald's
+    "mcd22": "3150",    # McDonald's Collection 2022
+    "mcd19": "2555",    # McDonald's Collection 2019
+    "mcd21": "2782",    # McDonald's Collection 2021 -> 25th Anniversary Promos
+    "mcd18": "2364",    # McDonald's Collection 2018
+    "mcd17": "2148",    # McDonald's Collection 2017
+    "mcd16": "3087",    # McDonald's Collection 2016
+    "mcd15": "1694",    # McDonald's Collection 2015
+    "mcd14": "1692",    # McDonald's Collection 2014
+    "mcd12": "1427",    # McDonald's Collection 2012
+    "mcd11": "1401",    # McDonald's Collection 2011
+}
+
+
 def _match_group_to_set(groups, set_id, set_name):
     """Find the TCGCSV group matching our set. Returns groupId or None."""
+    # Check manual overrides first
+    if set_id in _GROUP_OVERRIDES:
+        return _GROUP_OVERRIDES[set_id]
+
     name_lower = set_name.lower().strip()
+    # Normalize: replace & with "and", strip special chars
+    name_normalized = name_lower.replace("&", "and").replace("\u2014", " ").replace("\u2013", " ")
 
     # Try exact name match first
     for g in groups:
         gname = g.get("name", "").lower().strip()
         # TCGCSV names often have "SV: " prefix
         clean = re.sub(r'^[a-z]+\d*:\s*', '', gname)
+        gname_normalized = gname.replace("&", "and")
         if clean == name_lower or gname == name_lower:
+            return g["groupId"]
+        if clean == name_normalized or gname_normalized == name_normalized:
             return g["groupId"]
 
     # Fuzzy: check if our name is contained in theirs
@@ -50,7 +105,7 @@ def _match_group_to_set(groups, set_id, set_name):
     best_len = 999
     for g in groups:
         gname = g.get("name", "").lower()
-        if name_lower in gname:
+        if name_lower in gname or name_normalized in gname.replace("&", "and"):
             # Prefer shortest match (most specific)
             if len(gname) < best_len:
                 best = g["groupId"]
