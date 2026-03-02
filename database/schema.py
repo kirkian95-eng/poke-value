@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS prices (
     cm_avg REAL,
     cm_low REAL,
     cm_trend REAL,
+    graded_prices TEXT,
     price_source TEXT,
     last_updated TEXT,
     price_detail TEXT,
