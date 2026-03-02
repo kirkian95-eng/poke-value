@@ -1,11 +1,99 @@
 #!/usr/bin/env python3
 """Zero-token EV query for Stephen. Reads SQLite directly, prints JSON."""
 import json
+import re
 import sqlite3
 import sys
 import os
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pokemon_tcg_ev.db")
+
+# Common prefixes to strip from search input
+_STRIP_PREFIXES = re.compile(
+    r'^(pokemon|pokémon|ptcg|tcg|pkmn)\s+', re.IGNORECASE
+)
+# Era prefixes like "sv:", "swsh:", "sv " used as qualifiers
+_ERA_PREFIX = re.compile(
+    r'^(sv|swsh|sm|xy|bw)[:\s]+', re.IGNORECASE
+)
+
+
+def _normalize_search(term):
+    """Normalize search term: strip common prefixes, lowercase, collapse whitespace."""
+    t = term.strip()
+    t = _STRIP_PREFIXES.sub('', t)
+    t = _ERA_PREFIX.sub('', t)
+    return ' '.join(t.split()).lower()
+
+
+def _score_set(row, search_lower, search_words):
+    """Score a set match. Lower = better. Returns None if no match."""
+    name_lower = (row["name"] or "").lower()
+    id_lower = (row["id"] or "").lower()
+    ptcgo_lower = (row["ptcgo_code"] or "").lower()
+    series_lower = (row["series"] or "").lower()
+    combined = f"{name_lower} {series_lower} {id_lower} {ptcgo_lower}"
+
+    # Exact name match
+    if search_lower == name_lower:
+        return 0
+    # Exact ptcgo_code match
+    if search_lower == ptcgo_lower and ptcgo_lower:
+        return 1
+    # Exact id match
+    if search_lower == id_lower:
+        return 2
+    # All search words found in combined fields
+    if search_words and all(w in combined for w in search_words):
+        return 3
+    # Partial name match
+    if search_lower in name_lower:
+        return 4
+    # Partial id match
+    if search_lower in id_lower:
+        return 5
+    # Partial combined match
+    if search_lower in combined:
+        return 6
+    return None
+
+
+def _find_set(conn, search_term):
+    """Find best matching set using word-based scoring."""
+    search_lower = _normalize_search(search_term)
+    search_words = search_lower.split() if ' ' in search_lower or len(search_lower) <= 4 else []
+
+    # Also try the raw term (un-normalized) for direct matches
+    raw_lower = search_term.strip().lower()
+
+    rows = conn.execute("""
+        SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.era,
+               s.has_god_pack, s.ptcgo_code,
+               e.ev_per_pack, e.pack_price, e.calculated_at
+        FROM sets s
+        LEFT JOIN ev_cache e ON s.id = e.set_id
+    """).fetchall()
+
+    best_row = None
+    best_score = 999
+    best_date = ""
+
+    for row in rows:
+        # Try normalized search
+        score = _score_set(row, search_lower, search_words)
+        # Also try raw input (handles cases where normalization hurts)
+        if score is None and raw_lower != search_lower:
+            score = _score_set(row, raw_lower, raw_lower.split())
+        if score is None:
+            continue
+        release = row["release_date"] or ""
+        # Prefer: lower score, then more recent release date
+        if score < best_score or (score == best_score and release > best_date):
+            best_score = score
+            best_date = release
+            best_row = row
+
+    return best_row
 
 
 def query_ev(search_term):
@@ -15,20 +103,7 @@ def query_ev(search_term):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
 
-    # Find matching set (case-insensitive, partial match, prefer exact)
-    row = conn.execute("""
-        SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.era,
-               s.has_god_pack,
-               e.ev_per_pack, e.pack_price, e.calculated_at
-        FROM sets s
-        LEFT JOIN ev_cache e ON s.id = e.set_id
-        WHERE LOWER(s.name) LIKE '%' || LOWER(?) || '%'
-           OR LOWER(s.id) LIKE '%' || LOWER(?) || '%'
-        ORDER BY
-            CASE WHEN LOWER(s.name) = LOWER(?) THEN 0 ELSE 1 END,
-            s.release_date DESC
-        LIMIT 1
-    """, (search_term, search_term, search_term)).fetchone()
+    row = _find_set(conn, search_term)
 
     if not row:
         conn.close()
@@ -44,7 +119,7 @@ def query_ev(search_term):
             "fix": f"Run: python3 /home/ubuntu/pokemon-tcg-ev/cli.py update-prices --set {set_id} --no-pokewallet && python3 /home/ubuntu/pokemon-tcg-ev/cli.py calc-ev --set {set_id}",
         }
 
-    # Top 5 most valuable cards
+    # Top 10 most valuable cards
     top_cards = conn.execute("""
         SELECT c.name, c.rarity,
                COALESCE(p.tcg_market, p.cm_trend * 1.08, p.cm_avg * 1.08, 0) as price
@@ -52,7 +127,7 @@ def query_ev(search_term):
         LEFT JOIN prices p ON c.id = p.card_id
         WHERE c.set_id = ?
         ORDER BY price DESC
-        LIMIT 5
+        LIMIT 10
     """, (set_id,)).fetchall()
 
     # Rarity breakdown

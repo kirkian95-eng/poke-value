@@ -14,6 +14,9 @@ POKEWALLET_API_KEY = os.environ.get("POKEWALLET_API_KEY", "")
 
 TCGDEX_API_BASE = "https://api.tcgdex.net/v2/en"
 
+POKETRACE_API_BASE = "https://api.poketrace.com/v1"
+POKETRACE_API_KEY = os.environ.get("POKETRACE_API_KEY", "")
+
 # Pack MSRP for EV comparison
 DEFAULT_PACK_MSRP = 4.49
 

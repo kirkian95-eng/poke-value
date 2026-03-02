@@ -20,6 +20,8 @@ def main():
     p_prices = sub.add_parser("update-prices", help="Update card prices from APIs")
     p_prices.add_argument("--set", required=True, help="Set ID to update prices for")
     p_prices.add_argument("--no-pokewallet", action="store_true", help="Skip PokéWallet (USD)")
+    p_prices.add_argument("--source", choices=["poketrace", "tcgdex", "pokewallet"],
+                          help="Force a specific price source (default: auto-detect best)")
 
     p_ev = sub.add_parser("calc-ev", help="Calculate EV for a set")
     p_ev.add_argument("--set", required=True, help="Set ID")
@@ -50,7 +52,8 @@ def main():
 
     elif args.command == "update-prices":
         from importers.price_updater import update_set_prices
-        count = update_set_prices(args.set, use_pokewallet=not args.no_pokewallet)
+        count = update_set_prices(args.set, use_pokewallet=not args.no_pokewallet,
+                                  source=args.source)
         print(f"Done. {count} cards with prices for {args.set}.")
 
     elif args.command == "calc-ev":

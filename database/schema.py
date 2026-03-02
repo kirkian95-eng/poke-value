@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS prices (
     cm_trend REAL,
     price_source TEXT,
     last_updated TEXT,
+    price_detail TEXT,
     FOREIGN KEY (card_id) REFERENCES cards(id)
 );
 
@@ -90,6 +91,13 @@ CREATE TABLE IF NOT EXISTS ev_cache (
     pack_price REAL,
     calculated_at TEXT,
     FOREIGN KEY (set_id) REFERENCES sets(id)
+);
+
+CREATE TABLE IF NOT EXISTS card_id_map (
+    card_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    PRIMARY KEY (card_id, source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cards_set_id ON cards(set_id);
@@ -158,9 +166,100 @@ def seed_pull_rate_templates(conn):
     )
 
 
+def seed_god_packs(conn):
+    """Populate god pack data for all known sets that have god packs."""
+    import json
+
+    god_pack_sets = [
+        {
+            "set_id": "sv3pt5",
+            "god_pack_odds": 1 / 1300,
+            "packs": [
+                {
+                    "name": "Demi God Pack (Venusaur line)",
+                    "odds": 1 / 1300,
+                    "composition": json.dumps([
+                        {"rarity": "Illustration Rare", "count": 2},
+                        {"rarity": "Special Illustration Rare", "count": 1},
+                    ]),
+                    "description": "2 IR + 1 SIR from a Kanto starter evo line. 3 variants (Venusaur/Charizard/Blastoise).",
+                },
+            ],
+        },
+        {
+            "set_id": "sv8pt5",
+            "god_pack_odds": 1 / 500,  # combined odds (full + demi)
+            "packs": [
+                {
+                    "name": "Full God Pack",
+                    "odds": 1 / 2000,
+                    "composition": json.dumps([
+                        {"rarity": "Special Illustration Rare", "count": 9},
+                    ]),
+                    "description": "All 9 Eeveelution SIRs in one pack.",
+                },
+                {
+                    "name": "Demi God Pack",
+                    "odds": 1 / 500,
+                    "composition": json.dumps([
+                        {"rarity": "Special Illustration Rare", "count": 3},
+                        {"rarity": "Reverse Holo", "count": 7},
+                    ]),
+                    "description": "3 random Eeveelution SIRs + 7 Pokeball Reverse Holos.",
+                },
+            ],
+        },
+        {
+            "set_id": "me2pt5",
+            "god_pack_odds": 1 / 1000,
+            "packs": [
+                {
+                    "name": "Full God Pack",
+                    "odds": 1 / 1000,
+                    "composition": json.dumps([
+                        {"rarity": "Reverse Holo", "count": 1},
+                        {"rarity": "Art Rare", "count": 1},
+                        {"rarity": "Illustration Rare", "count": 5},
+                        {"rarity": "Special Art Rare", "count": 4},
+                    ]),
+                    "description": "1 RH + 1 AR + 5 MAR/IR + 4 SAR.",
+                },
+            ],
+        },
+    ]
+
+    for gps in god_pack_sets:
+        set_id = gps["set_id"]
+
+        # Check if set exists in DB
+        exists = conn.execute("SELECT id FROM sets WHERE id = ?", (set_id,)).fetchone()
+        if not exists:
+            continue
+
+        # Update set flags
+        conn.execute(
+            "UPDATE sets SET has_god_pack = 1, god_pack_odds = ? WHERE id = ?",
+            (gps["god_pack_odds"], set_id),
+        )
+
+        # Insert god pack entries (skip if already seeded)
+        for pack in gps["packs"]:
+            existing = conn.execute(
+                "SELECT id FROM god_packs WHERE set_id = ? AND name = ?",
+                (set_id, pack["name"]),
+            ).fetchone()
+            if existing:
+                continue
+            conn.execute(
+                "INSERT INTO god_packs (set_id, name, odds, composition, description) VALUES (?,?,?,?,?)",
+                (set_id, pack["name"], pack["odds"], pack["composition"], pack["description"]),
+            )
+
+
 def init_db():
     """Create all tables and seed pull rate templates."""
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
         seed_pull_rate_templates(conn)
+        seed_god_packs(conn)
     print("Database initialized with schema and pull rate templates.")
