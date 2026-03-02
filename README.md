@@ -165,21 +165,25 @@ poke-value/
 
 ## Roadmap
 
-### Near-term
-- **Set completion cost** — How much to buy every card in a set at market prices?
-- **Expected packs to complete** — How many packs to open on average to collect every card? (Coupon collector problem with duplicate trading model)
-- **Sealed product analysis** — Compare EV across booster boxes, ETBs, tins, and blister packs at different price points. Data already in DB via TCGCSV.
-- **Price trend tracking** — Historical price snapshots for trend analysis (daily TCGCSV snapshots are free)
-- **Portfolio tracker** — Track what you own, what you need, and the gap value
+### Ready to build (data already in DB)
+- **Set completion cost** — Sum market price of every card in a set. "Completing Prismatic Evolutions costs $X at market / $Y at low." Data: 98% card price coverage.
+- **Expected packs to complete** — Coupon collector problem with pull rate weights. How many packs to collect every card, with duplicate trading model.
+- **Rip-or-flip analysis** — Compare sealed product price vs EV of contents. "Prismatic Evolutions ETB: $193 sealed, 9 packs × $30.41 EV = $274 expected — rip it." Data: 1,740 sealed products + pack EV.
+- **Grading ROI calculator** — Raw vs PSA 10 price spread minus grading fees and expected grade distribution. Data: 596 cards with ungraded/Grade 9/PSA 10 prices.
+- **Price-to-rarity scatter** — Plot price vs rarity tier across sets. Find outlier commons worth more than ultra rares, or underpriced SIRs.
+- **Cross-set rarity comparison** — Which set has the cheapest SIRs? Most expensive? Helps decide which sealed product to buy.
+- **Pack value distribution** — Already computed in EV engine. Surface as a tool: probability of $10+, $50+, $100+ packs.
 
-### App ideas
-- **Arbitrage finder** — Compare TCGPlayer vs eBay vs Cardmarket prices to find underpriced cards across marketplaces
-- **Grading ROI calculator** — Given raw vs graded price spreads, estimate whether it's worth grading a card (factoring in PSA/CGC fees, turnaround time, and expected grade distribution)
-- **Rip-or-flip analysis** — For any sealed product, should you open it or sell it sealed? Compare sealed market price vs expected value of contents
-- **Pack simulator** — Monte Carlo pack opening simulator with configurable pack counts, showing percentile outcomes and probability of profit
-- **Price alerts** — Notify when a card drops below a target price or a sealed product hits a buy threshold
-- **Market intelligence** — Track which cards/sets are trending up or down, identify speculative opportunities before set rotations
-- **Collection valuation** — Upload a collection list, get total portfolio value with breakdown by set/rarity/condition
+### Medium effort (some new data/logic needed)
+- **Portfolio tracker** — User inputs owned cards, system sums market value. Track over time with daily TCGCSV snapshots (needs price history table).
+- **Price alerts** — Store target prices, compare against daily refresh, notify via Telegram when a card drops below threshold.
+- **Arbitrage finder** — Compare TCGCSV (TCGPlayer) vs PriceCharting (eBay) prices for the same card. Flag meaningful spreads. Both sources already in DB.
+- **Sealed product trend tracker** — Snapshot sealed_products daily, build price history. Track which ETBs/boxes are appreciating.
+
+### Bigger builds
+- **Pack opening simulator** — Monte Carlo with exact pull rates. "Simulate 100 packs of Prismatic Evolutions" → histogram, probability of profit, best/worst case.
+- **Market intelligence dashboard** — Daily price deltas, biggest movers, set-level trend aggregates. Needs price history over time.
+- **Rotation impact analyzer** — Track sets approaching Standard rotation, model expected price impact from historical rotation data.
 
 ## Tech stack
 
