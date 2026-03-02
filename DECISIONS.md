@@ -169,3 +169,41 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 **Why:** Cards pulled from sealed packs are pack-fresh, which is Near Mint condition. NM is the standard grading baseline for sealed product analysis. Using LIGHTLY_PLAYED or lower would understate the EV of what you're actually pulling.
 
 **Tradeoff:** NM prices are the highest condition tier, so EV calculations are slightly optimistic — if you damage a card or can't sell at NM due to market conditions, realized value will be lower. This is standard practice in sealed product analysis.
+
+---
+
+## 13. TCGCSV as Primary Bulk Price Source
+
+**Date:** 2026-03-02
+
+**Decision:** Use TCGCSV (tcgcsv.com) as the primary bulk pricing source. It mirrors TCGPlayer's entire product catalog as free CSV files — no auth, no rate limit, unlimited requests.
+
+**Why:** TCGCSV solves the biggest problem we had: getting TCGPlayer USD prices at scale without burning API calls. One HTTP request per set gives market/low/mid/high/directLow prices for every card AND every sealed product (booster boxes, ETBs, tins, etc.). We priced 16,896 cards across 132 sets in ~90 seconds with zero API keys.
+
+**URL pattern:** `https://tcgcsv.com/tcgplayer/3/{groupId}/ProductsAndPrices.csv`
+- Category 3 = Pokemon
+- groupId mapped from our set names via `Groups.csv`
+- CSV columns: productId, name, extNumber, marketPrice, lowPrice, midPrice, highPrice, directLowPrice
+
+**How it fits with other sources:**
+- **TCGCSV**: Bulk pricing backbone. TCGPlayer USD market/low/mid/high for all cards + sealed products. Updated frequently.
+- **PokeTrace**: Overlay for premium data. Adds condition breakdowns (NM/LP/MP/HP/DMG), eBay prices, sale counts, 7d/30d trends. 250/day free tier, used for high-value cards.
+- **TCGdex**: Cardmarket EUR data. Useful for EU market comparison.
+
+**Tradeoff:** TCGCSV provides a single price point per card (presumably NM/market) — no condition breakdowns or trend data. PokeTrace is still needed for that deeper analysis. TCGCSV also doesn't distinguish between print variants (normal vs reverse holo vs holofoil) in the same way PokeTrace does — it reports the cheapest available printing. For EV calculations this is actually fine since we want the base card value.
+
+**Sealed products:** TCGCSV is the only source that gives us sealed product pricing. We classify products by type (booster_box, etb, collection, tin, blister, etc.) and store them in a dedicated `sealed_products` table. This enables rip-or-flip analysis: compare sealed market price vs EV of contents.
+
+---
+
+## 14. Sealed Products Table: Separate from Cards
+
+**Date:** 2026-03-02
+
+**Decision:** Store sealed product prices in a dedicated `sealed_products` table, separate from the `cards`/`prices` tables.
+
+**Why:** Sealed products are fundamentally different from cards — they don't have rarities, pull rates, or card numbers. They represent the *input* to EV calculations (what you pay), not the *output* (what you pull). Mixing them with cards would complicate every query.
+
+**Schema:** `sealed_products(set_id, name, product_type, tcg_market, tcg_low, tcg_mid, tcg_high, tcg_direct_low, tcgplayer_product_id, last_updated)`. Product types are classified from the name: booster_box, etb, collection, tin, blister, booster_pack, booster_bundle, build_battle, league, deck, other.
+
+**Tradeoff:** Requires a separate import path and table, but the data model is cleaner. Enables future features like rip-or-flip analysis, sealed product trend tracking, and arbitrage between sealed product types.

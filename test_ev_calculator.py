@@ -474,6 +474,8 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(result["ev_per_pack"], 0)
 
 
+# Ensure test DB is set up for both pytest and unittest runners
+_setup_test_db()
+
 if __name__ == "__main__":
-    _setup_test_db()
     unittest.main(verbosity=2)

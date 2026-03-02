@@ -20,13 +20,21 @@ def main():
     p_prices = sub.add_parser("update-prices", help="Update card prices from APIs")
     p_prices.add_argument("--set", required=True, help="Set ID to update prices for")
     p_prices.add_argument("--no-pokewallet", action="store_true", help="Skip PokéWallet (USD)")
-    p_prices.add_argument("--source", choices=["poketrace", "tcgdex", "pokewallet"],
+    p_prices.add_argument("--source", choices=["poketrace", "tcgdex", "pokewallet", "tcgcsv"],
                           help="Force a specific price source (default: auto-detect best)")
+
+    p_tcgcsv = sub.add_parser("bulk-prices", help="Bulk update TCGPlayer prices via TCGCSV (free, unlimited)")
+    p_tcgcsv.add_argument("--set", help="Single set ID")
+    p_tcgcsv.add_argument("--era", help="Filter by era (sv, swsh, sm, etc.)")
+    p_tcgcsv.add_argument("--all", action="store_true", help="Update all sets")
 
     p_ev = sub.add_parser("calc-ev", help="Calculate EV for a set")
     p_ev.add_argument("--set", required=True, help="Set ID")
 
     sub.add_parser("calc-ev-all", help="Calculate EV for all sets with prices")
+
+    p_sealed = sub.add_parser("sealed", help="Show sealed product prices for a set")
+    p_sealed.add_argument("--set", required=True, help="Set ID")
 
     p_stats = sub.add_parser("stats", help="Show database statistics")
 
@@ -56,6 +64,18 @@ def main():
                                   source=args.source)
         print(f"Done. {count} cards with prices for {args.set}.")
 
+    elif args.command == "bulk-prices":
+        from importers.tcgcsv_importer import update_prices_tcgcsv, update_all_prices_tcgcsv
+        if args.set:
+            from importers.tcgcsv_importer import fetch_tcgcsv_groups
+            groups = fetch_tcgcsv_groups()
+            prices = update_prices_tcgcsv(args.set, groups=groups)
+            _save_tcgcsv_prices(args.set, prices)
+        elif args.all or args.era:
+            update_all_prices_tcgcsv(era_filter=args.era)
+        else:
+            print("Specify --set, --era, or --all")
+
     elif args.command == "calc-ev":
         from engine.ev_calculator import calculate_set_ev
         result = calculate_set_ev(args.set)
@@ -82,11 +102,41 @@ def main():
             except Exception as e:
                 print(f"{row['name']:40s} | ERROR: {e}")
 
+    elif args.command == "sealed":
+        _print_sealed(args.set)
+
     elif args.command == "stats":
         _print_stats()
 
     else:
         parser.print_help()
+
+
+def _save_tcgcsv_prices(set_id, prices):
+    """Save TCGCSV prices to the database."""
+    if not prices:
+        return
+    from database.connection import get_db
+    from datetime import datetime
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        for card_id, p in prices.items():
+            conn.execute("""
+                INSERT INTO prices (card_id, tcg_market, tcg_low, tcg_mid, tcg_high,
+                                   tcg_direct_low, price_source, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, 'tcgcsv', ?)
+                ON CONFLICT(card_id) DO UPDATE SET
+                    tcg_market=excluded.tcg_market,
+                    tcg_low=excluded.tcg_low,
+                    tcg_mid=excluded.tcg_mid,
+                    tcg_high=excluded.tcg_high,
+                    tcg_direct_low=excluded.tcg_direct_low,
+                    price_source=CASE WHEN price_source LIKE '%poketrace%'
+                        THEN price_source ELSE 'tcgcsv' END,
+                    last_updated=excluded.last_updated
+            """, (card_id, p["tcg_market"], p["tcg_low"], p["tcg_mid"],
+                  p["tcg_high"], p["tcg_direct_low"], now))
+    print(f"  Saved {len(prices)} prices to database")
 
 
 def _print_ev_result(result):
@@ -109,6 +159,53 @@ def _print_ev_result(result):
     print()
 
 
+def _print_sealed(set_id):
+    """Show sealed product prices for a set."""
+    from database.connection import get_db
+    from engine.ev_calculator import calculate_set_ev
+    with get_db() as conn:
+        set_row = conn.execute("SELECT name FROM sets WHERE id = ?", (set_id,)).fetchone()
+        if not set_row:
+            print(f"Set {set_id} not found")
+            return
+        products = conn.execute("""
+            SELECT name, product_type, tcg_market, tcg_low
+            FROM sealed_products WHERE set_id = ?
+            ORDER BY product_type, tcg_market DESC
+        """, (set_id,)).fetchall()
+
+    if not products:
+        print(f"No sealed products found for {set_row['name']}")
+        return
+
+    # Calculate EV for context
+    try:
+        ev = calculate_set_ev(set_id)
+        ev_per_pack = ev["ev_per_pack"]
+    except Exception:
+        ev_per_pack = None
+
+    print(f"\nSealed Products: {set_row['name']}")
+    if ev_per_pack:
+        print(f"  EV per pack: ${ev_per_pack:.2f}")
+    print(f"\n  {'Product':50s} | {'Type':>12s} | {'Market':>8s} | {'Low':>8s}")
+    print(f"  {'-' * 85}")
+    for p in products:
+        name = p["name"][:50]
+        market = f"${p['tcg_market']:>7.2f}" if p["tcg_market"] else "    N/A"
+        low = f"${p['tcg_low']:>7.2f}" if p["tcg_low"] else "    N/A"
+        ptype = p["product_type"] or "other"
+        print(f"  {name:50s} | {ptype:>12s} | {market} | {low}")
+
+        # Show pack EV ratio for booster boxes
+        if ev_per_pack and p["product_type"] == "booster_box" and p["tcg_market"]:
+            packs_in_box = 36
+            box_ev = ev_per_pack * packs_in_box
+            ratio = box_ev / p["tcg_market"]
+            print(f"  {'':50s} | {'':>12s} | EV: ${box_ev:.0f} ({ratio:.0%} of market)")
+    print()
+
+
 def _print_stats():
     """Show database statistics."""
     from database.connection import get_db
@@ -118,11 +215,16 @@ def _print_stats():
         prices_count = conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
         ev_count = conn.execute("SELECT COUNT(*) FROM ev_cache").fetchone()[0]
         templates_count = conn.execute("SELECT COUNT(*) FROM pull_rate_templates").fetchone()[0]
+        try:
+            sealed_count = conn.execute("SELECT COUNT(*) FROM sealed_products").fetchone()[0]
+        except Exception:
+            sealed_count = 0
 
         print(f"\nDatabase Statistics:")
         print(f"  Sets:            {sets_count}")
         print(f"  Cards:           {cards_count}")
         print(f"  Prices:          {prices_count}")
+        print(f"  Sealed products: {sealed_count}")
         print(f"  EV cached:       {ev_count}")
         print(f"  Pull templates:  {templates_count}")
 

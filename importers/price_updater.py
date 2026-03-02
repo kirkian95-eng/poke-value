@@ -449,7 +449,29 @@ def update_set_prices(set_id, use_pokewallet=True, source=None):
     pw_prices = {}
     pt_prices = {}
 
-    if source == "poketrace":
+    if source == "tcgcsv":
+        from importers.tcgcsv_importer import update_prices_tcgcsv
+        tcgcsv_prices = update_prices_tcgcsv(set_id)
+        # TCGCSV gives us TCGPlayer USD prices directly
+        now = datetime.utcnow().isoformat()
+        with get_db() as conn:
+            for card_id, p in tcgcsv_prices.items():
+                conn.execute("""
+                    INSERT INTO prices (card_id, tcg_market, tcg_low, tcg_mid, tcg_high,
+                                       tcg_direct_low, price_source, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, 'tcgcsv', ?)
+                    ON CONFLICT(card_id) DO UPDATE SET
+                        tcg_market=excluded.tcg_market, tcg_low=excluded.tcg_low,
+                        tcg_mid=excluded.tcg_mid, tcg_high=excluded.tcg_high,
+                        tcg_direct_low=excluded.tcg_direct_low,
+                        price_source=CASE WHEN price_source LIKE '%poketrace%'
+                            THEN price_source ELSE 'tcgcsv' END,
+                        last_updated=excluded.last_updated
+                """, (card_id, p["tcg_market"], p["tcg_low"], p["tcg_mid"],
+                      p["tcg_high"], p["tcg_direct_low"], now))
+        print(f"  Total: {len(tcgcsv_prices)} cards with prices in DB")
+        return len(tcgcsv_prices)
+    elif source == "poketrace":
         pt_prices = update_prices_poketrace(set_id)
         # Also get Cardmarket EUR from TCGdex as supplementary
         tcgdex_prices = update_prices_tcgdex(set_id)

@@ -11,7 +11,7 @@
 
 - Python 3, Flask, SQLite (WAL mode)
 - CLI via argparse in cli.py
-- Price sources: TCGdex (free, EUR), PokeTrace (API key, USD, full condition data)
+- Price sources: TCGCSV (free, unlimited, TCGPlayer USD + sealed), PokeTrace (API key, USD, conditions/trends), TCGdex (free, EUR)
 - EV engine uses closed-form probability math, not simulation
 - Pull rates are community estimates stored as era-based templates with per-set overrides
 - Full PokeTrace JSON stored in `price_detail` column — never discard pricing data
@@ -23,6 +23,7 @@
 - `engine/ev_calculator.py` — core math engine
 - `engine/pull_rates.py` — pull rate resolver
 - `importers/price_updater.py` — multi-source price fetcher
+- `importers/tcgcsv_importer.py` — TCGCSV bulk price + sealed product importer
 - `database/schema.py` — schema + seed data
 - `update-pokemon-prices.py` — standalone daily cron script
 - `query_ev.py` — zero-dependency JSON query script

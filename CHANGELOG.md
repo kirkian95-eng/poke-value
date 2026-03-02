@@ -4,6 +4,36 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-02 — TCGCSV Bulk Pricing, Sealed Products & Roadmap
+
+Session: Claude Code (Opus 4.6) at Kirk's direction.
+
+### Added
+
+**TCGCSV Bulk Price Importer**
+- `importers/tcgcsv_importer.py`: free, unlimited TCGPlayer price data via TCGCSV mirrors
+- One HTTP request per set → market/low/mid/high/directLow for every card
+- 16,896 cards priced across 132 sets in ~90 seconds, zero authentication
+- Set name fuzzy matching with prefix stripping (handles "SV: Scarlet & Violet 151" → "151")
+- CLI: `bulk-prices --all`, `bulk-prices --era sv`, `bulk-prices --set sv3pt5`
+- `update-prices --source tcgcsv` for single-set updates
+
+**Sealed Product Pricing**
+- New `sealed_products` table stores booster box, ETB, tin, collection, blister prices
+- Automatic product type classification from name
+- TCGCSV provides sealed product prices that no other free API offers
+- CLI: `sealed --set sv8pt5` shows all sealed products with prices and EV context
+- Booster box EV ratio displayed (36-pack box EV vs market price)
+
+**Expanded Roadmap**
+- Near-term: set completion cost, expected packs to complete, sealed product analysis, price trends, portfolio tracker
+- App ideas: arbitrage finder, grading ROI calculator, rip-or-flip analysis, pack simulator, price alerts, market intelligence, collection valuation
+
+### Technical Decisions
+- See DECISIONS.md #13-14 for TCGCSV as bulk source and sealed products table design
+
+---
+
 ## 2026-03-02 — PokeTrace Integration & Public Repo
 
 Session: Claude Code (Opus 4.6) at Kirk's direction.

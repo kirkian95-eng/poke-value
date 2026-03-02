@@ -100,9 +100,26 @@ CREATE TABLE IF NOT EXISTS card_id_map (
     PRIMARY KEY (card_id, source)
 );
 
+CREATE TABLE IF NOT EXISTS sealed_products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    set_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    product_type TEXT,
+    tcg_market REAL,
+    tcg_low REAL,
+    tcg_mid REAL,
+    tcg_high REAL,
+    tcg_direct_low REAL,
+    tcgplayer_product_id TEXT,
+    last_updated TEXT,
+    UNIQUE(set_id, tcgplayer_product_id),
+    FOREIGN KEY (set_id) REFERENCES sets(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_set_id ON cards(set_id);
 CREATE INDEX IF NOT EXISTS idx_cards_rarity ON cards(rarity);
 CREATE INDEX IF NOT EXISTS idx_prices_updated ON prices(last_updated);
+CREATE INDEX IF NOT EXISTS idx_sealed_set_id ON sealed_products(set_id);
 """
 
 
