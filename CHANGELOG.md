@@ -1,6 +1,49 @@
 # Changelog
 
-All notable changes to the Pokemon TCG EV Calculator.
+All notable changes to poke-value.
+
+---
+
+## 2026-03-02 — PokeTrace Integration & Public Repo
+
+Session: Claude Code (Opus 4.6) at Kirk's direction.
+
+### Added
+
+**PokeTrace Pricing**
+- Full PokeTrace API integration: set slug matching (era-aware with validation fallback), card UUID lookup with number format conversion ("166" vs "166/165")
+- `price_detail` JSON column: stores ALL pricing data — 5 condition tiers (NM/LP/MP/HP/DMG) × 2 marketplaces (TCGPlayer + eBay) × 8 metrics (avg, low, high, saleCount, avg1d, avg7d, avg30d, lastUpdated)
+- `card_id_map` table: caches PokeTrace set slugs and card UUIDs to minimize API calls on repeat runs
+- CLI `--source` flag: `update-prices --set sv3pt5 --source poketrace`
+- Source priority: PokeTrace USD > PokéWallet USD > TCGdex EUR
+
+**Automated Daily Pricing**
+- `update-pokemon-prices.py`: standalone cron script (zero AI tokens, zero OpenClaw dependency)
+- Burns 240 of 250 daily free-tier API calls
+- Prioritizes SV-era Special Illustration Rares first, works down by rarity and era
+- Recalculates EV for any set that receives new prices
+- Status file: `/tmp/pokemon-price-status.json`
+- Crontab: 1am UTC daily
+
+**God Pack Data**
+- Seeded god pack definitions for 151 (demi god pack, 1/1300), Prismatic Evolutions (full 1/2000 + demi 1/500), Ascended Heroes (full 1/1000)
+
+**Improved Set Search** (`query_ev.py`)
+- Word-based fuzzy matching with normalization
+- Strips common prefixes (pokemon, ptcg, tcg)
+- Era prefix support
+- ptcgo_code matching
+- Returns top 10 cards instead of 5
+
+**Public Repo**
+- Moved to `kirkian95-eng/poke-value` (public)
+- README with math explanation, quick start, CLI reference, roadmap
+- MIT license
+- CLAUDE.md with project conventions
+- DECISIONS.md expanded with all architecture decisions
+
+### Technical Decisions
+- See DECISIONS.md #8-12 for full rationale on PokeTrace matching, full data retention, and cron automation
 
 ---
 
