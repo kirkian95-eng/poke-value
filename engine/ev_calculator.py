@@ -16,7 +16,7 @@ A pack has multiple slot types:
 
 3. REVERSE HOLO SLOTS (2 per pack in SV era, 1 in older eras):
    Drawn from common+uncommon+rare pool with reverse holo treatment.
-   Priced at ~50% of normal card price (approximation).
+   Priced using actual TCGPlayer reverse holo market prices (tcg_reverse_holo).
    P(specific card) = slot_count / N_reverse_eligible
 
 4. GOD PACK ADJUSTMENT:
@@ -34,7 +34,7 @@ from engine.pull_rates import get_set_pull_rates, get_god_pack_data
 
 
 def _get_price(card):
-    """Get the best available USD price for a card."""
+    """Get the best available USD price for a card (normal/holofoil print)."""
     tcg = card.get("tcg_market")
     if tcg and tcg > 0:
         return tcg
@@ -45,6 +45,15 @@ def _get_price(card):
     if cm_avg and cm_avg > 0:
         return cm_avg * EUR_TO_USD
     return 0.0
+
+
+def _get_reverse_holo_price(card):
+    """Get the reverse holo price for a card. Falls back to normal price if unavailable."""
+    rev = card.get("tcg_reverse_holo")
+    if rev and rev > 0:
+        return rev
+    # Fallback: use normal price (better than the old 50% assumption)
+    return _get_price(card)
 
 
 def calculate_set_ev(set_id):
@@ -59,7 +68,7 @@ def calculate_set_ev(set_id):
     with get_db() as conn:
         rows = conn.execute("""
             SELECT c.id, c.name, c.number, c.rarity, c.supertype,
-                   p.tcg_market, p.cm_avg, p.cm_trend
+                   p.tcg_market, p.tcg_reverse_holo, p.cm_avg, p.cm_trend
             FROM cards c
             LEFT JOIN prices p ON c.id = p.card_id
             WHERE c.set_id = ?
@@ -98,12 +107,12 @@ def calculate_set_ev(set_id):
 
             rarity_ev = 0.0
             for card in reverse_cards:
-                price = _get_price(card) * 0.5  # reverse holos ~50% of normal
+                price = _get_reverse_holo_price(card)
                 p_card = guaranteed / n_rev
                 rarity_ev += p_card * price
 
             ev_total += rarity_ev
-            avg_price = sum(_get_price(c) for c in reverse_cards) / n_rev * 0.5
+            avg_price = sum(_get_reverse_holo_price(c) for c in reverse_cards) / n_rev
             breakdown.append({
                 "rarity": "Reverse Holo",
                 "card_count": n_rev,
@@ -236,7 +245,7 @@ def calculate_pack_distribution(set_id):
     with get_db() as conn:
         rows = conn.execute("""
             SELECT c.id, c.name, c.number, c.rarity, c.supertype,
-                   p.tcg_market, p.cm_avg, p.cm_trend
+                   p.tcg_market, p.tcg_reverse_holo, p.cm_avg, p.cm_trend
             FROM cards c
             LEFT JOIN prices p ON c.id = p.card_id
             WHERE c.set_id = ?
@@ -266,7 +275,7 @@ def calculate_pack_distribution(set_id):
             if n_rev == 0:
                 continue
             for card in reverse_cards:
-                price = _get_price(card) * 0.5
+                price = _get_reverse_holo_price(card)
                 p_card = guaranteed / n_rev
                 base_value += p_card * price
 
@@ -405,7 +414,7 @@ def get_card_ev_details(set_id):
     with get_db() as conn:
         rows = conn.execute("""
             SELECT c.id, c.name, c.number, c.rarity, c.supertype,
-                   p.tcg_market, p.cm_avg, p.cm_trend
+                   p.tcg_market, p.tcg_reverse_holo, p.cm_avg, p.cm_trend
             FROM cards c
             LEFT JOIN prices p ON c.id = p.card_id
             WHERE c.set_id = ?

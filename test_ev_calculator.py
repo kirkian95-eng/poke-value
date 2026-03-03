@@ -268,26 +268,26 @@ class TestEVCalculation(unittest.TestCase):
           Common:   4 cards/pack * avg($0.10) = 4/40 * 40*0.10 = $0.40
           Uncommon: 3 cards/pack * avg($0.20) = 3/30 * 30*0.20 = $0.60
 
-        Hit slot (each rarity prob / n_cards * sum_prices):
-          Rare:     0.55/15 * 15*0.50 = 0.55 * 0.50 = $0.275
+        Hit slot (after normalization: ACE SPEC 0.048 + gap 0.026 -> Rare):
+          Rare:     0.624/15 * 15*0.50 = 0.624 * 0.50 = $0.312
           DR:       0.20/10 * 10*3.00 = 0.20 * 3.00 = $0.60
           IR:       0.09/8  *  8*15.0 = 0.09 * 15.0 = $1.35
           UR:       0.065/6 *  6*10.0 = 0.065 * 10.0 = $0.65
           SIR:      0.015/4 *  4*50.0 = 0.015 * 50.0 = $0.75
           HR:       0.006/2 *  2*25.0 = 0.006 * 25.0 = $0.15
-          ACE:      0 (no cards) = $0.00
+          ACE:      0 (no cards, prob redistributed) = $0.00
 
-        Reverse Holo:
+        Reverse Holo (using real prices, no 0.5x assumption):
           Pool = 40 common + 30 uncommon + 15 rare = 85 cards
-          2 cards from pool at 50% price
-          Sum of pool prices = 40*0.10 + 30*0.20 + 15*0.50 = 4+6+7.50 = $17.50
-          EV = 2/85 * 17.50 * 0.50 = 2 * 17.50 * 0.50 / 85 = $0.2059
+          2 cards from pool at actual reverse holo price (fallback to normal)
+          Sum of pool prices = 40*0.10 + 30*0.20 + 15*0.50 = $17.50
+          EV = 2/85 * 17.50 = $0.4118
 
-        Total = 0.40 + 0.60 + 0.275 + 0.60 + 1.35 + 0.65 + 0.75 + 0.15 + 0.2059
-              = $4.9809
+        Total = 0.40 + 0.60 + 0.312 + 0.60 + 1.35 + 0.65 + 0.75 + 0.15 + 0.4118
+              = $5.2238
         """
         result = calculate_set_ev("test1")
-        expected = 4.98
+        expected = 5.22
         self.assertAlmostEqual(result["ev_per_pack"], expected, delta=0.05,
             msg=f"EV {result['ev_per_pack']} differs from hand-calculated {expected}")
 
@@ -432,11 +432,11 @@ class TestPackDistribution(unittest.TestCase):
         Base value should equal guaranteed slot EV.
         Common: 4/40 * 40*0.10 = $0.40
         Uncommon: 3/30 * 30*0.20 = $0.60
-        Reverse Holo: 2/85 * 17.50 * 0.50 = $0.2059
-        Total base ≈ $1.2059
+        Reverse Holo: 2/85 * 17.50 = $0.4118 (using real prices, no 0.5x)
+        Total base ≈ $1.4118
         """
         result = calculate_pack_distribution("test1")
-        expected_base = 0.40 + 0.60 + 0.2059
+        expected_base = 0.40 + 0.60 + 0.4118
         self.assertAlmostEqual(result["stats"]["base_value"], expected_base, delta=0.02)
 
     def test_outcome_count_matches_hit_cards(self):

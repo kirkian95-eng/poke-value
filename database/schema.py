@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS prices (
     tcg_mid REAL,
     tcg_high REAL,
     tcg_direct_low REAL,
+    tcg_reverse_holo REAL,
     cm_avg REAL,
     cm_low REAL,
     cm_trend REAL,

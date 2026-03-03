@@ -203,6 +203,7 @@ def update_prices_tcgcsv(set_id, groups=None):
         card_by_number[num] = c["id"]
 
     results = {}
+    reverse_holo_prices = {}  # card_id -> cheapest standard reverse holo market price
     sealed_products = []
     now = datetime.utcnow().isoformat()
 
@@ -232,6 +233,13 @@ def update_prices_tcgcsv(set_id, groups=None):
                             for suffix in _VARIANT_SUFFIXES)
 
             subtype = row.get("subTypeName", "").lower()
+
+            # Track reverse holo prices separately (standard variants only)
+            if subtype == "reverse holofoil" and not is_special:
+                if card_id not in reverse_holo_prices or market < reverse_holo_prices[card_id]:
+                    reverse_holo_prices[card_id] = market
+                continue  # Don't use reverse holo as the main price
+
             price_data = {
                 "tcg_market": market,
                 "tcg_low": _safe_float(row.get("lowPrice")),
@@ -299,10 +307,11 @@ def update_prices_tcgcsv(set_id, groups=None):
                       sp["tcg_low"], sp["tcg_mid"], sp["tcg_high"],
                       sp["tcg_direct_low"], sp["product_id"], now))
 
-    # Strip internal tracking keys before returning
+    # Strip internal tracking keys and attach reverse holo prices
     for card_id in results:
         results[card_id].pop("_is_special", None)
         results[card_id].pop("_subtype", None)
+        results[card_id]["tcg_reverse_holo"] = reverse_holo_prices.get(card_id)
 
     print(f"  TCGCSV: {len(results)} cards priced, {len(sealed_products)} sealed products stored")
     return results
@@ -339,19 +348,20 @@ def update_all_prices_tcgcsv(era_filter=None):
             for card_id, p in prices.items():
                 conn.execute("""
                     INSERT INTO prices (card_id, tcg_market, tcg_low, tcg_mid, tcg_high,
-                                       tcg_direct_low, price_source, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, 'tcgcsv', ?)
+                                       tcg_direct_low, tcg_reverse_holo, price_source, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'tcgcsv', ?)
                     ON CONFLICT(card_id) DO UPDATE SET
                         tcg_market=excluded.tcg_market,
                         tcg_low=excluded.tcg_low,
                         tcg_mid=excluded.tcg_mid,
                         tcg_high=excluded.tcg_high,
                         tcg_direct_low=excluded.tcg_direct_low,
+                        tcg_reverse_holo=excluded.tcg_reverse_holo,
                         price_source=CASE WHEN price_source LIKE '%poketrace%'
                             THEN price_source ELSE 'tcgcsv' END,
                         last_updated=excluded.last_updated
                 """, (card_id, p["tcg_market"], p["tcg_low"], p["tcg_mid"],
-                      p["tcg_high"], p["tcg_direct_low"], now))
+                      p["tcg_high"], p["tcg_direct_low"], p.get("tcg_reverse_holo"), now))
 
         total_priced += len(prices)
         time.sleep(0.5)  # be polite

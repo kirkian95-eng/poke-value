@@ -4,6 +4,20 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-03 — Replace reverse holo price assumption with real data
+
+### Fixed
+
+**Reverse Holo Pricing**
+- Old assumption: reverse holos = 50% of normal card price
+- Reality: reverse holos average 1.81x normal price (TCGCSV has real "Reverse Holofoil" market prices)
+- Added `tcg_reverse_holo` column to prices table
+- TCGCSV importer now captures reverse holo prices as a separate field
+- EV calculator uses real reverse holo prices with fallback to normal price
+- Impact: all set EVs increased by $0.25–$1.09 (the old assumption was undervaluing packs)
+
+---
+
 ## 2026-03-03 — Critical EV Math Audit: Three Bug Fixes
 
 ### Fixed
