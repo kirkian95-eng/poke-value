@@ -4,6 +4,28 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 
 ---
 
+## TCGCSV Variant Selection Strategy
+
+**Date:** 2026-03-03
+
+**Decision:** When TCGCSV returns multiple product variants per card number (Normal, Reverse Holofoil, Poke Ball Pattern, Master Ball Pattern), prefer the standard pack-pull version: filter out special variants by name suffix, prefer "Normal" subtype, then pick the cheapest remaining option.
+
+**Why:** TCGPlayer lists multiple products per card (standard, Poke Ball Pattern, Master Ball Pattern). They share the same extNumber but have wildly different prices (Umbreon: standard $0.27 vs Master Ball $57.44). Without filtering, the importer was storing whichever came last in the CSV, which was often the most expensive special variant. This inflated EV calculations by 10-100x.
+
+**Tradeoff:** The heuristic (name suffix filtering + cheapest) could theoretically pick the wrong variant for unusual cards. But it's always better than the previous "last wins" approach. Special variants are excluded from EV calculations since you can't pull a Master Ball Pattern card from a regular booster pack.
+
+---
+
+## Pull Rate Normalization
+
+**Date:** 2026-03-03
+
+**Decision:** After loading pull rate templates, redistribute orphaned probability (from rarities not present in a set) to the base Rare slot, then normalize hit_slot total to 1.0.
+
+**Why:** Era templates define pull rates for all possible rarities (e.g., ACE SPEC Rare), but not every set has every rarity. Without redistribution, probability leaked — sv8pt5 had only 88.4% of hit slots accounted for. In reality, every pack has exactly one hit card, so the total must be 1.0. The missing probability most accurately goes to Rare (the most common hit).
+
+---
+
 ## 1. Data Source: GitHub JSON Repo vs Live API
 
 **Date:** 2026-02-28

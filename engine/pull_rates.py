@@ -15,6 +15,8 @@ def get_set_pull_rates(set_id):
     1. Look up the set's era.
     2. Load all template rates for that era.
     3. Apply any overrides from pull_rate_overrides for this set_id.
+    4. Redistribute probability from hit_slot rarities not present in this set
+       to the base Rare slot, ensuring hit probabilities sum to 1.0.
     """
     with get_db() as conn:
         row = conn.execute("SELECT era FROM sets WHERE id = ?", (set_id,)).fetchone()
@@ -31,6 +33,13 @@ def get_set_pull_rates(set_id):
             "SELECT rarity, slot_type, guaranteed_count, probability_per_pack, notes "
             "FROM pull_rate_overrides WHERE set_id = ?", (set_id,)
         ).fetchall()
+
+        # Get rarities that actually exist in this set
+        existing = conn.execute(
+            "SELECT DISTINCT rarity FROM cards WHERE set_id = ? AND rarity IS NOT NULL",
+            (set_id,),
+        ).fetchall()
+        set_rarities = {r["rarity"] for r in existing}
 
     # Build result: start with templates, then apply overrides
     rates = {}
@@ -55,6 +64,28 @@ def get_set_pull_rates(set_id):
                 else rates.get(key, {}).get("probability_per_pack", 0),
             "notes": o["notes"],
         }
+
+    # Redistribute orphaned hit_slot probability to base Rare.
+    # If a template defines a hit_slot rarity not present in this set,
+    # that probability would be wasted. Add it to Rare instead.
+    orphaned_prob = 0.0
+    rare_key = ("Rare", "hit_slot")
+    for key, rate in list(rates.items()):
+        if rate["slot_type"] != "hit_slot":
+            continue
+        if rate["rarity"] not in set_rarities:
+            orphaned_prob += rate["probability_per_pack"]
+            del rates[key]
+
+    if orphaned_prob > 0 and rare_key in rates:
+        rates[rare_key]["probability_per_pack"] += orphaned_prob
+
+    # Normalize: ensure hit_slot probabilities sum to 1.0
+    hit_total = sum(r["probability_per_pack"] for r in rates.values()
+                    if r["slot_type"] == "hit_slot")
+    if 0 < hit_total < 1.0 and rare_key in rates:
+        # Add the gap to Rare (every pack has exactly one hit)
+        rates[rare_key]["probability_per_pack"] += (1.0 - hit_total)
 
     return list(rates.values())
 

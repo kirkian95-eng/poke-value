@@ -4,6 +4,83 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-03 — Critical EV Math Audit: Three Bug Fixes
+
+### Fixed
+
+**Bug 1: sv1 mapped to wrong TCGPlayer group**
+- Fuzzy matcher matched "Scarlet & Violet" to "SV: Scarlet & Violet 151" (group 23237) instead of "SV01: Scarlet & Violet Base Set" (group 22873)
+- Every sv1 card was getting the wrong price (Crushing Hammer priced at $92.29 instead of $0.12)
+- Added explicit override `sv1 -> 22873` in `_GROUP_OVERRIDES`
+
+**Bug 2: TCGCSV variant overwrite inflating prices**
+- TCGCSV has multiple product variants per card number: Normal, Reverse Holofoil, Poke Ball Pattern, Master Ball Pattern
+- Importer was overwriting and keeping whichever came last (often the most expensive variant)
+- Umbreon (Rare) was stored at $57.44 (Master Ball Pattern) instead of $0.27 (standard Holofoil)
+- Fixed variant selection: prefer standard prints over special variants, prefer Normal subtype, pick cheapest among same tier
+
+**Bug 3: Pull rate probabilities didn't sum to 1.0**
+- Template hit_slot probabilities summed to 0.974, leaving a 2.6% gap
+- When a set lacked a template rarity (e.g., sv8pt5 has no Illustration Rare), that probability was wasted (up to 11.6% leak)
+- Added redistribution: orphaned rarity probability goes to base Rare slot, then normalize to 1.0
+
+### Impact
+- sv1 EV: $55.97 → $2.77
+- sv8pt5 EV: $30.41 → $4.34
+- All SV-era sets now in the $2.50–$8.50 range (was $0–$56)
+
+---
+
+## 2026-03-03 — Phase 1 Complete: Foundation + Quick Wins
+
+### Added
+
+**Set Completion Cost Calculator** (feature: `set-completion-cost`)
+- `engine/set_analysis.py` — shared set analysis module
+- `get_set_completion_cost(set_id)` — total market/low/mid cost with rarity breakdown
+- `/completion` route + template — sortable cross-set completion cost comparison
+- `/api/set/<id>/completion` JSON endpoint
+- Set detail page: completion cost section with rarity breakdown bars
+- CLI: `completion-cost --set <id>` command
+
+**Rip-or-Flip Analysis** (feature: `rip-or-flip`)
+- `get_rip_or_flip(set_id)` — sealed product EV vs sealed price, rip/flip/even verdicts
+- Pack count heuristics (product_type mapping + name regex fallback)
+- `/rip-or-flip` route + template — cross-set sealed product rankings by margin
+- `/api/set/<id>/rip-or-flip` JSON endpoint
+- Set detail page: sealed products rip-or-flip table with verdict badges
+
+**Navigation & Dashboard** (feature: `nav-overhaul`)
+- Dashboard landing page at `/` with quick stats, top EV sets, tool links
+- Set grid moved to `/sets`
+- Responsive nav with Tools dropdown menu and mobile hamburger
+- Brand name links to dashboard
+
+**Chart.js Integration** (feature: `chartjs-setup`)
+- Chart.js v4 CDN in base template
+- `static/charts.js` — `createChart()` helper with dark theme defaults, consistent color palette
+
+**Pack Value Distribution Tool** (feature: `pack-value-tool`)
+- `/api/set/<id>/distribution` JSON endpoint
+- Chart.js bar chart replaces HTML-bar histogram on set detail page
+- `/distributions` route + template — multi-set distribution comparison (select 2-4 sets, overlaid charts, stats table)
+
+**Set Analysis Engine Module** (feature: `set-analysis-module`)
+- `engine/set_analysis.py` created with shared functions for multiple features
+
+### Tests
+- 20 new tests (57 total, all passing): completion cost (8), pack count (5), rip-or-flip (7)
+
+### Task Progress — Phase 1 Complete
+- `set-completion-cost`: done (5/5 subtasks)
+- `rip-or-flip`: done (4/4 subtasks)
+- `nav-overhaul`: done (2/2 subtasks)
+- `chartjs-setup`: done (1/1 subtasks)
+- `pack-value-tool`: done (3/3 subtasks)
+- `set-analysis-module`: done (1/1 subtasks)
+
+---
+
 ## 2026-03-02 — Task Roadmap & Frontend-First Planning
 
 Session: Claude Code (Opus 4.6) at Kirk's direction.

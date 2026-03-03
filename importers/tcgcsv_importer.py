@@ -36,6 +36,8 @@ def fetch_tcgcsv_groups():
 # Manual overrides for sets where fuzzy matching fails.
 # Our set_id -> TCGCSV groupId (verified against Groups.csv)
 _GROUP_OVERRIDES = {
+    # SV era: fuzzy match fails because "Scarlet & Violet" matches many groups
+    "sv1": "22873",     # Scarlet & Violet -> SV01: Scarlet & Violet Base Set
     # Base sets: TCGCSV uses "and" not "&", or drops prefix
     "sm1": "1863",      # Sun & Moon -> SM Base Set
     "dp1": "1430",      # Diamond & Pearl -> Diamond and Pearl
@@ -204,6 +206,12 @@ def update_prices_tcgcsv(set_id, groups=None):
     sealed_products = []
     now = datetime.utcnow().isoformat()
 
+    # Separate standard prints from special variants (Poke Ball Pattern, Master Ball Pattern, etc.)
+    # Special variants share the same extNumber but have inflated prices.
+    # We want the standard print price for EV calculations.
+    _VARIANT_SUFFIXES = ("poke ball pattern", "master ball pattern", "cosmos holo",
+                         "stamped", "promo", "prerelease")
+
     for row in rows:
         ext_number = row.get("extNumber", "").strip()
         market = _safe_float(row.get("marketPrice", ""))
@@ -214,14 +222,51 @@ def update_prices_tcgcsv(set_id, groups=None):
             # It's a card — match by number
             num = ext_number.split("/")[0].lstrip("0") or "0"
             card_id = card_by_number.get(num)
-            if card_id:
-                results[card_id] = {
-                    "tcg_market": market,
-                    "tcg_low": _safe_float(row.get("lowPrice")),
-                    "tcg_mid": _safe_float(row.get("midPrice")),
-                    "tcg_high": _safe_float(row.get("highPrice")),
-                    "tcg_direct_low": _safe_float(row.get("directLowPrice")),
-                }
+            if not card_id:
+                continue
+
+            # Skip special variant products (different productIds, same card number)
+            clean_name = row.get("cleanName", "").lower()
+            raw_name = row.get("name", "").lower()
+            is_special = any(suffix in clean_name or suffix in raw_name
+                            for suffix in _VARIANT_SUFFIXES)
+
+            subtype = row.get("subTypeName", "").lower()
+            price_data = {
+                "tcg_market": market,
+                "tcg_low": _safe_float(row.get("lowPrice")),
+                "tcg_mid": _safe_float(row.get("midPrice")),
+                "tcg_high": _safe_float(row.get("highPrice")),
+                "tcg_direct_low": _safe_float(row.get("directLowPrice")),
+            }
+
+            if card_id not in results:
+                # First entry for this card
+                results[card_id] = price_data
+                results[card_id]["_is_special"] = is_special
+                results[card_id]["_subtype"] = subtype
+            else:
+                prev = results[card_id]
+                prev_special = prev.get("_is_special", False)
+                # Prefer standard over special; among same tier prefer Normal > cheapest
+                if prev_special and not is_special:
+                    # Replace special with standard
+                    results[card_id] = price_data
+                    results[card_id]["_is_special"] = is_special
+                    results[card_id]["_subtype"] = subtype
+                elif not prev_special and is_special:
+                    # Keep existing standard, skip this special
+                    pass
+                elif subtype == "normal" and prev.get("_subtype") != "normal":
+                    # Prefer Normal subtype
+                    results[card_id] = price_data
+                    results[card_id]["_is_special"] = is_special
+                    results[card_id]["_subtype"] = subtype
+                elif market < prev["tcg_market"] and prev.get("_subtype") != "normal":
+                    # Among same tier (both standard or both special), pick cheapest
+                    results[card_id] = price_data
+                    results[card_id]["_is_special"] = is_special
+                    results[card_id]["_subtype"] = subtype
         else:
             # It's a sealed product
             name = row.get("name", "")
@@ -253,6 +298,11 @@ def update_prices_tcgcsv(set_id, groups=None):
                 """, (set_id, sp["name"], sp["product_type"], sp["tcg_market"],
                       sp["tcg_low"], sp["tcg_mid"], sp["tcg_high"],
                       sp["tcg_direct_low"], sp["product_id"], now))
+
+    # Strip internal tracking keys before returning
+    for card_id in results:
+        results[card_id].pop("_is_special", None)
+        results[card_id].pop("_subtype", None)
 
     print(f"  TCGCSV: {len(results)} cards priced, {len(sealed_products)} sealed products stored")
     return results

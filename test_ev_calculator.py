@@ -23,6 +23,7 @@ from database.connection import get_db
 from database.schema import init_db, SCHEMA_SQL
 from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution, _get_price, _compute_god_pack_ev
 from engine.pull_rates import get_set_pull_rates, get_god_pack_data
+from engine.set_analysis import get_set_completion_cost, get_rip_or_flip, _estimate_pack_count
 
 
 def _setup_test_db():
@@ -164,6 +165,20 @@ def _setup_test_db():
                 (f"test2-{i}", price["tcg_market"], "test", "2025-01-01"),
             )
 
+        # Add sealed products for rip-or-flip testing
+        conn.execute("""
+            INSERT INTO sealed_products (set_id, name, product_type, tcg_market, tcg_low, tcgplayer_product_id)
+            VALUES ('test1', 'Test Booster Box', 'booster_box', 100.00, 90.00, 'sealed-1')
+        """)
+        conn.execute("""
+            INSERT INTO sealed_products (set_id, name, product_type, tcg_market, tcg_low, tcgplayer_product_id)
+            VALUES ('test1', 'Test Elite Trainer Box', 'elite_trainer_box', 45.00, 40.00, 'sealed-2')
+        """)
+        conn.execute("""
+            INSERT INTO sealed_products (set_id, name, product_type, tcg_market, tcg_low, tcgplayer_product_id)
+            VALUES ('test1', 'Test Mystery Product', NULL, 30.00, 25.00, 'sealed-3')
+        """)
+
         # Add god pack data
         conn.execute("""
             INSERT INTO god_packs (set_id, name, odds, composition, description)
@@ -206,11 +221,11 @@ class TestPullRateTemplates(unittest.TestCase):
         self.assertGreater(len(rates), 0)
 
     def test_hit_slot_probabilities_sum_to_one(self):
-        """Hit slot probabilities must sum to ~1.0 for the math to be valid."""
+        """Hit slot probabilities must sum to 1.0 after normalization."""
         rates = get_set_pull_rates("test1")
         hit_probs = sum(r["probability_per_pack"] for r in rates if r["slot_type"] == "hit_slot")
-        self.assertAlmostEqual(hit_probs, 0.974, places=2,
-            msg=f"Hit slot probabilities sum to {hit_probs}, expected ~0.974")
+        self.assertAlmostEqual(hit_probs, 1.0, places=2,
+            msg=f"Hit slot probabilities sum to {hit_probs}, expected 1.0")
 
     def test_guaranteed_slots_present(self):
         rates = get_set_pull_rates("test1")
@@ -391,13 +406,12 @@ class TestPackDistribution(unittest.TestCase):
         self.assertIn("stats", result)
 
     def test_probabilities_sum_to_hit_slot_total(self):
-        """Outcome probabilities should sum to the total hit slot probability for present rarities.
-        ACE SPEC (0.048) has no cards in test set, so total = 0.974 - 0.048 = 0.926."""
+        """Outcome probabilities should sum to 1.0 after normalization.
+        ACE SPEC has no cards in test set, so its probability is redistributed to Rare."""
         result = calculate_pack_distribution("test1")
         total = sum(o["probability"] for o in result["outcomes"])
-        expected = 0.55 + 0.20 + 0.09 + 0.065 + 0.015 + 0.006  # all except ACE SPEC
-        self.assertAlmostEqual(total, expected, places=3,
-            msg=f"Outcome probabilities sum to {total}, expected {expected}")
+        self.assertAlmostEqual(total, 1.0, places=3,
+            msg=f"Outcome probabilities sum to {total}, expected 1.0")
 
     def test_median_exists_and_reasonable(self):
         """Median pack value should exist and be positive."""
@@ -472,6 +486,122 @@ class TestEdgeCases(unittest.TestCase):
             """)
         result = calculate_set_ev("test-noprices")
         self.assertEqual(result["ev_per_pack"], 0)
+
+
+class TestSetCompletionCost(unittest.TestCase):
+    """Test set completion cost calculations."""
+
+    def test_returns_required_fields(self):
+        result = get_set_completion_cost("test1")
+        for field in ["set_id", "set_name", "total_cards", "cards_priced",
+                       "cards_missing", "total_market", "total_low", "total_mid", "breakdown"]:
+            self.assertIn(field, result, f"Missing field: {field}")
+
+    def test_total_market_correct(self):
+        """Hand-calculated: 40*0.10 + 30*0.20 + 15*0.50 + 10*3 + 8*15 + 6*10 + 4*50 + 2*25 = $477.50."""
+        result = get_set_completion_cost("test1")
+        self.assertAlmostEqual(result["total_market"], 477.50, places=2)
+
+    def test_all_cards_priced(self):
+        """All 115 test cards have prices."""
+        result = get_set_completion_cost("test1")
+        self.assertEqual(result["cards_priced"], 115)
+        self.assertEqual(result["cards_missing"], 0)
+
+    def test_breakdown_has_all_rarities(self):
+        result = get_set_completion_cost("test1")
+        rarities = {b["rarity"] for b in result["breakdown"]}
+        expected = {"Common", "Uncommon", "Rare", "Double Rare",
+                    "Illustration Rare", "Ultra Rare", "Special Illustration Rare", "Hyper Rare"}
+        self.assertEqual(rarities, expected)
+
+    def test_breakdown_sir_cost(self):
+        """SIR breakdown: 4 cards at $50 = $200 market."""
+        result = get_set_completion_cost("test1")
+        sir = next(b for b in result["breakdown"] if b["rarity"] == "Special Illustration Rare")
+        self.assertEqual(sir["count"], 4)
+        self.assertAlmostEqual(sir["market"], 200.00, places=2)
+
+    def test_breakdown_sorted_by_cost(self):
+        """Breakdown should be sorted most expensive rarity first."""
+        result = get_set_completion_cost("test1")
+        markets = [b["market"] for b in result["breakdown"]]
+        self.assertEqual(markets, sorted(markets, reverse=True))
+
+    def test_nonexistent_set_returns_none(self):
+        result = get_set_completion_cost("nonexistent-set")
+        self.assertIsNone(result)
+
+    def test_set_with_no_prices(self):
+        """Set with cards but no prices should have zero totals."""
+        result = get_set_completion_cost("test-noprices")
+        self.assertEqual(result["total_market"], 0)
+        self.assertEqual(result["cards_priced"], 0)
+        self.assertEqual(result["cards_missing"], 1)
+
+
+class TestPackCountEstimate(unittest.TestCase):
+    """Test pack count heuristics."""
+
+    def test_booster_box(self):
+        self.assertEqual(_estimate_pack_count("booster_box", ""), 36)
+
+    def test_etb(self):
+        self.assertEqual(_estimate_pack_count("elite_trainer_box", ""), 9)
+
+    def test_name_fallback_etb(self):
+        self.assertEqual(_estimate_pack_count(None, "Prismatic Evolutions Elite Trainer Box"), 9)
+
+    def test_name_fallback_booster_box(self):
+        self.assertEqual(_estimate_pack_count(None, "Surging Sparks Booster Box"), 36)
+
+    def test_unknown_returns_none(self):
+        self.assertIsNone(_estimate_pack_count(None, "Mystery Gift Basket"))
+
+
+class TestRipOrFlip(unittest.TestCase):
+    """Test rip-or-flip analysis."""
+
+    def test_returns_required_fields(self):
+        result = get_rip_or_flip("test1")
+        self.assertIn("set_id", result)
+        self.assertIn("set_name", result)
+        self.assertIn("ev_per_pack", result)
+        self.assertIn("products", result)
+
+    def test_products_have_verdicts(self):
+        result = get_rip_or_flip("test1")
+        for p in result["products"]:
+            self.assertIn("verdict", p)
+            self.assertIn("margin", p)
+            self.assertIn("ev_contents", p)
+            self.assertIn("pack_count", p)
+
+    def test_booster_box_pack_count(self):
+        result = get_rip_or_flip("test1")
+        bb = next(p for p in result["products"] if p["product_type"] == "booster_box")
+        self.assertEqual(bb["pack_count"], 36)
+
+    def test_etb_pack_count(self):
+        result = get_rip_or_flip("test1")
+        etb = next(p for p in result["products"] if p["product_type"] == "elite_trainer_box")
+        self.assertEqual(etb["pack_count"], 9)
+
+    def test_ev_contents_calculation(self):
+        """EV contents = ev_per_pack * pack_count."""
+        result = get_rip_or_flip("test1")
+        ev = result["ev_per_pack"]
+        bb = next(p for p in result["products"] if p["product_type"] == "booster_box")
+        self.assertAlmostEqual(bb["ev_contents"], ev * 36, places=2)
+
+    def test_nonexistent_set_returns_none(self):
+        result = get_rip_or_flip("nonexistent-set")
+        self.assertIsNone(result)
+
+    def test_sorted_by_margin(self):
+        result = get_rip_or_flip("test1")
+        margins = [p["margin"] for p in result["products"]]
+        self.assertEqual(margins, sorted(margins, reverse=True))
 
 
 # Ensure test DB is set up for both pytest and unittest runners
