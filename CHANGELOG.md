@@ -4,6 +4,24 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-02 — Task Roadmap & Frontend-First Planning
+
+Session: Claude Code (Opus 4.6) at Kirk's direction.
+
+### Added
+
+**Task Roadmap (`tasks.yaml`)**
+- Comprehensive YAML task file breaking all 16 features into 50+ subtasks
+- Each feature has both backend (engine, API, CLI) and frontend (template, JS, CSS) tasks
+- Dependencies, priorities (1-3), tiers (ready/medium/bigger), and file lists per task
+- 4-phase build order: Foundation → Analysis Tools → Tracking/History → Intelligence
+- Frontend stack: Flask + Jinja2 + vanilla JS + Chart.js (CDN) — no React, consistent with existing dark theme
+
+### Technical Decisions
+- See DECISIONS.md #15 for frontend-alongside-backend development approach
+
+---
+
 ## 2026-03-02 — TCGCSV Bulk Pricing, Sealed Products & Roadmap
 
 Session: Claude Code (Opus 4.6) at Kirk's direction.

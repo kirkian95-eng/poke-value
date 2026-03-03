@@ -20,6 +20,7 @@
 
 ## Key files
 
+- `tasks.yaml` — roadmap tasks with subtasks, dependencies, priorities, and build order
 - `engine/ev_calculator.py` — core math engine
 - `engine/pull_rates.py` — pull rate resolver
 - `importers/price_updater.py` — multi-source price fetcher
@@ -27,6 +28,25 @@
 - `database/schema.py` — schema + seed data
 - `update-pokemon-prices.py` — standalone daily cron script
 - `query_ev.py` — zero-dependency JSON query script
+
+## Development workflow
+
+The project uses a task-driven development loop. All roadmap work lives in `tasks.yaml`.
+
+**Slash commands:**
+- `/task` — Pick up the next available task, build it (backend + frontend together), test, self-review, update docs, and mark done.
+- `/review` — Self-review uncommitted changes for correctness, consistency, completeness, and performance.
+- `/status` — Print roadmap progress across all features and phases.
+
+**Rules for every task:**
+1. Backend and frontend are built in the same pass — never leave a feature without its UI.
+2. All new pages extend `templates/base.html` and use the dark theme.
+3. Charts use Chart.js v4 (CDN in base.html) with the shared theme helper in `static/charts.js`.
+4. Run existing tests after every change. Add new tests for new engine functions.
+5. Update `tasks.yaml` status after completing each subtask.
+6. Update CHANGELOG.md and DECISIONS.md as you work, not at the end.
+
+**Frontend stack:** Flask + Jinja2 + vanilla JS + Chart.js CDN. No React, no npm, no build step.
 
 ## PokeTrace API notes
 

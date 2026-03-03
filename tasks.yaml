@@ -1,0 +1,775 @@
+# poke-value roadmap tasks
+# Each feature includes both backend (Python/Flask/SQLite) and frontend (templates/JS/CSS) work.
+# Dependencies reference other task IDs. Priority: 1=next up, 2=soon, 3=later.
+# Status: pending | in_progress | done
+#
+# Frontend stack: Flask + Jinja2 templates + vanilla JS + CSS (dark theme).
+# Chart.js CDN added for any visualization features.
+# All new pages extend templates/base.html and follow existing patterns.
+
+features:
+
+  # ──────────────────────────────────────────────────────────
+  # TIER 1: Ready to build (data already in DB)
+  # ──────────────────────────────────────────────────────────
+
+  - id: set-completion-cost
+    name: Set Completion Cost Calculator
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Sum market price of every card in a set. Show "Completing Prismatic
+      Evolutions costs $X at market / $Y at low." 98% card price coverage
+      already in DB.
+    tasks:
+      - id: scc-backend
+        name: "Backend: compute set completion cost"
+        status: pending
+        description: >
+          New function in engine/ that queries all cards+prices for a set,
+          sums tcg_market and tcg_low per card. Returns total_market,
+          total_low, total_mid, cards_priced, cards_missing, breakdown
+          by rarity. Handle missing prices gracefully (report gap count).
+        files:
+          - engine/set_analysis.py (new)
+      - id: scc-api
+        name: "API: /api/set/<id>/completion endpoint"
+        status: pending
+        depends_on: [scc-backend]
+        description: >
+          Flask JSON endpoint returning completion cost data.
+          Used by both the set detail page and a standalone comparison view.
+        files:
+          - app.py
+      - id: scc-frontend-detail
+        name: "Frontend: completion cost card on set detail page"
+        status: pending
+        depends_on: [scc-api]
+        description: >
+          Add a "Set Completion Cost" section to set_detail.html below the
+          EV summary. Show market total, low total, cards priced vs total,
+          and a mini rarity breakdown (how much of the cost is SIRs vs commons).
+          Style consistent with existing ev-summary card layout.
+        files:
+          - templates/set_detail.html
+          - static/style.css
+      - id: scc-frontend-compare
+        name: "Frontend: set completion comparison page"
+        status: pending
+        depends_on: [scc-api]
+        description: >
+          New /completion route and template. Sortable table of all sets
+          with completion costs, cards priced, price gaps. Filter by era.
+          Highlight sets where completion is cheapest relative to card count.
+        files:
+          - app.py
+          - templates/completion.html (new)
+          - templates/base.html (add nav link)
+      - id: scc-cli
+        name: "CLI: completion-cost command"
+        status: pending
+        depends_on: [scc-backend]
+        description: >
+          Add `python3 cli.py completion-cost --set <id>` command.
+          Print market/low totals and rarity breakdown.
+        files:
+          - cli.py
+
+  - id: rip-or-flip
+    name: Rip-or-Flip Analysis
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Compare sealed product price vs EV of contents. "Prismatic Evolutions
+      ETB: $193 sealed, 9 packs x $30.41 EV = $274 expected — rip it."
+      Data: 1,740 sealed products + pack EV already in DB.
+    tasks:
+      - id: rof-backend
+        name: "Backend: rip-or-flip engine"
+        status: pending
+        description: >
+          New function that takes a sealed product, determines pack count
+          (from product_type or name heuristics: ETB=8-9 packs, booster box=36,
+          booster bundle=6, etc.), multiplies by set EV, compares to sealed
+          market price. Returns verdict (rip/flip/even), EV of contents,
+          sealed price, margin, and confidence level.
+          Needs a pack_count mapping for product types.
+        files:
+          - engine/set_analysis.py
+      - id: rof-api
+        name: "API: /api/set/<id>/rip-or-flip endpoint"
+        status: pending
+        depends_on: [rof-backend]
+        description: >
+          Returns rip-or-flip analysis for all sealed products in a set.
+          JSON array of products with verdict, margin, pack count.
+        files:
+          - app.py
+      - id: rof-frontend-detail
+        name: "Frontend: rip-or-flip section on set detail page"
+        status: pending
+        depends_on: [rof-api]
+        description: >
+          Add "Sealed Products — Rip or Flip?" section to set_detail.html.
+          Table of sealed products with columns: name, type, sealed price,
+          packs, EV of contents, margin, verdict badge (green RIP / red FLIP).
+          Sortable by margin.
+        files:
+          - templates/set_detail.html
+          - static/style.css
+      - id: rof-frontend-page
+        name: "Frontend: standalone rip-or-flip rankings page"
+        status: pending
+        depends_on: [rof-api]
+        description: >
+          New /rip-or-flip route. Cross-set view: all sealed products ranked
+          by margin. Filter by product type (ETB, booster box, etc.) and era.
+          Best deals at the top. Card-style layout with verdict badges.
+        files:
+          - app.py
+          - templates/rip_or_flip.html (new)
+          - templates/base.html (add nav link)
+
+  - id: grading-roi
+    name: Grading ROI Calculator
+    tier: ready
+    priority: 2
+    status: pending
+    description: >
+      Raw vs PSA 10 price spread minus grading fees and expected grade
+      distribution. 596 cards already have ungraded/Grade 9/PSA 10 prices.
+    tasks:
+      - id: groi-backend
+        name: "Backend: grading ROI calculator"
+        status: pending
+        description: >
+          New function that takes a card's graded_prices JSON, applies
+          grading cost ($20-50 PSA depending on tier/speed), expected grade
+          distribution (community averages: ~20% PSA 10, ~40% PSA 9, etc.),
+          and calculates expected profit = weighted_avg_graded_value - raw_price
+          - grading_fee. Configurable grading fee tiers in config.py.
+        files:
+          - engine/set_analysis.py
+          - config.py (grading fee constants)
+      - id: groi-api
+        name: "API: /api/grading-roi/<card_id> and /api/set/<id>/grading-roi"
+        status: pending
+        depends_on: [groi-backend]
+        description: >
+          Per-card and per-set grading ROI endpoints. Set endpoint returns
+          top grading candidates sorted by expected profit.
+        files:
+          - app.py
+      - id: groi-frontend-detail
+        name: "Frontend: grading ROI section on set detail page"
+        status: pending
+        depends_on: [groi-api]
+        description: >
+          Add "Top Grading Candidates" section to set_detail.html. Show
+          cards with highest grading ROI. Columns: card name, raw price,
+          PSA 10 price, expected profit, ROI %. Only shown if set has
+          graded price data.
+        files:
+          - templates/set_detail.html
+      - id: groi-frontend-page
+        name: "Frontend: grading ROI tool page"
+        status: pending
+        depends_on: [groi-api]
+        description: >
+          New /grading route. Cross-set view of all 596+ cards with graded
+          prices. Sortable by ROI, filterable by set/rarity. Grading fee
+          selector (PSA economy $20, regular $50, etc.) that recalculates
+          live via JS. Interactive — changing fee tier updates all ROIs.
+        files:
+          - app.py
+          - templates/grading.html (new)
+          - templates/base.html (add nav link)
+
+  - id: cross-set-rarity
+    name: Cross-Set Rarity Comparison
+    tier: ready
+    priority: 2
+    status: pending
+    description: >
+      Which set has the cheapest SIRs? Most expensive? Compare average
+      prices by rarity across sets to help decide which sealed product to buy.
+    tasks:
+      - id: csr-backend
+        name: "Backend: cross-set rarity stats"
+        status: pending
+        description: >
+          Query that groups cards by (set_id, rarity), computes avg/min/max
+          price per rarity per set. Returns matrix of set x rarity with
+          price stats. Focus on high-value rarities: SIR, HR, UR, IR, DR.
+        files:
+          - engine/set_analysis.py
+      - id: csr-api
+        name: "API: /api/rarity-comparison endpoint"
+        status: pending
+        depends_on: [csr-backend]
+        description: >
+          JSON endpoint with optional rarity and era filters.
+          Returns array of {set_id, set_name, rarity, avg_price, min_price,
+          max_price, card_count}.
+        files:
+          - app.py
+      - id: csr-frontend
+        name: "Frontend: rarity comparison page"
+        status: pending
+        depends_on: [csr-api]
+        description: >
+          New /compare route. Heatmap-style table: rows=sets, columns=rarities,
+          cells=average price color-coded (green=cheap, red=expensive).
+          Click a cell to see the individual cards. Rarity selector tabs
+          at top. Era filter dropdown.
+        files:
+          - app.py
+          - templates/compare.html (new)
+          - templates/base.html (add nav link)
+          - static/style.css (heatmap colors)
+
+  - id: price-rarity-scatter
+    name: Price-to-Rarity Scatter Plot
+    tier: ready
+    priority: 3
+    status: pending
+    description: >
+      Plot price vs rarity tier across sets. Find outlier commons worth
+      more than ultra rares, or underpriced SIRs. Visualization-heavy.
+    tasks:
+      - id: prs-api
+        name: "API: /api/set/<id>/scatter endpoint"
+        status: pending
+        description: >
+          Returns array of {card_name, number, rarity, price, rarity_rank}
+          for scatter plot rendering. rarity_rank is numeric (Common=1,
+          Uncommon=2, ... Hyper Rare=10) for Y-axis positioning.
+        files:
+          - app.py
+      - id: prs-frontend
+        name: "Frontend: scatter plot on set detail page"
+        status: pending
+        depends_on: [prs-api]
+        description: >
+          Add interactive scatter plot to set_detail.html using Chart.js.
+          X-axis = price (log scale), Y-axis = rarity tier. Each dot is a
+          card — hover shows name and price. Outliers highlighted (commons
+          worth more than rares, cheap SIRs). Add Chart.js CDN to base.html.
+        files:
+          - templates/set_detail.html
+          - templates/base.html (Chart.js CDN)
+          - static/style.css
+
+  - id: nav-overhaul
+    name: Navigation & Layout Overhaul
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Current nav is minimal (Sets, About). As features grow, need proper
+      navigation with dropdown menus or sidebar. Also need a dashboard
+      landing page instead of jumping straight to the set grid.
+    tasks:
+      - id: nav-redesign
+        name: "Frontend: responsive nav with feature links"
+        status: pending
+        description: >
+          Redesign nav bar to include: Sets, Tools (dropdown: Rip or Flip,
+          Grading ROI, Rarity Compare), About. Mobile hamburger menu.
+          Keep dark theme. Add subtle Pokemon-themed accent.
+        files:
+          - templates/base.html
+          - static/style.css
+      - id: nav-dashboard
+        name: "Frontend: dashboard landing page"
+        status: pending
+        description: >
+          New / route (move set grid to /sets). Dashboard shows:
+          quick stats (total sets, cards priced, avg EV), top 5 sets by EV,
+          top 5 rip-or-flip deals, recent price updates. Card-based layout.
+        files:
+          - app.py
+          - templates/dashboard.html (new)
+          - templates/index.html (update to /sets route)
+
+  # ──────────────────────────────────────────────────────────
+  # TIER 2: Medium effort (some new data/logic needed)
+  # ──────────────────────────────────────────────────────────
+
+  - id: arbitrage-finder
+    name: Arbitrage Finder
+    tier: medium
+    priority: 2
+    status: pending
+    description: >
+      Compare TCGCSV (TCGPlayer) vs PriceCharting (eBay) prices for the
+      same card. Flag meaningful spreads. Both sources already in DB for
+      SV-era sets with graded prices.
+    tasks:
+      - id: arb-backend
+        name: "Backend: arbitrage detection"
+        status: pending
+        description: >
+          Query cards that have both tcg_market (TCGCSV) and graded_prices.ungraded
+          (PriceCharting/eBay). Compute spread = |tcgplayer - ebay| and
+          spread_pct. Flag cards where spread > $2 AND spread_pct > 15%.
+          Return sorted by absolute spread descending.
+        files:
+          - engine/set_analysis.py
+      - id: arb-api
+        name: "API: /api/arbitrage endpoint"
+        status: pending
+        depends_on: [arb-backend]
+        description: >
+          JSON endpoint with optional set_id and min_spread filters.
+          Returns list of arbitrage opportunities.
+        files:
+          - app.py
+      - id: arb-frontend
+        name: "Frontend: arbitrage page"
+        status: pending
+        depends_on: [arb-api]
+        description: >
+          New /arbitrage route. Table: card name, set, TCGPlayer price,
+          eBay price, spread, spread %, direction (buy on X sell on Y).
+          Color-coded by spread size. Filter by set, min spread, direction.
+          Only shows for SV-era sets with graded data.
+        files:
+          - app.py
+          - templates/arbitrage.html (new)
+          - templates/base.html (nav link)
+          - static/style.css
+
+  - id: price-alerts
+    name: Price Alerts (Telegram)
+    tier: medium
+    priority: 3
+    status: pending
+    description: >
+      Store target prices, compare against daily refresh, notify via
+      Telegram when a card drops below threshold. Leverages existing
+      Telegram bot infrastructure.
+    tasks:
+      - id: pa-schema
+        name: "Backend: price_alerts table"
+        status: pending
+        description: >
+          New table: price_alerts (id, card_id, target_price, direction,
+          alert_type, notified_at, created_at, active). Migration script
+          to add table to live DB.
+        files:
+          - database/schema.py
+      - id: pa-backend
+        name: "Backend: alert checking engine"
+        status: pending
+        depends_on: [pa-schema]
+        description: >
+          Function that runs after price updates: query all active alerts,
+          compare current price to target, fire Telegram notification for
+          matches. Mark as notified. Integrate into TCGCSV cron pipeline.
+        files:
+          - engine/alerts.py (new)
+          - importers/tcgcsv_importer.py (hook after update)
+      - id: pa-api
+        name: "API: CRUD endpoints for alerts"
+        status: pending
+        depends_on: [pa-schema]
+        description: >
+          POST /api/alerts (create), GET /api/alerts (list),
+          DELETE /api/alerts/<id> (remove). Simple REST.
+        files:
+          - app.py
+      - id: pa-frontend
+        name: "Frontend: alert management on card/set pages"
+        status: pending
+        depends_on: [pa-api]
+        description: >
+          Add "Set Alert" button next to card prices on set_detail.html.
+          Click opens a small modal: enter target price, choose direction
+          (below/above). Alerts management page at /alerts showing active
+          alerts with current price and distance from target. Delete button.
+        files:
+          - templates/set_detail.html
+          - templates/alerts.html (new)
+          - app.py
+          - static/style.css
+
+  - id: sealed-trends
+    name: Sealed Product Trend Tracker
+    tier: medium
+    priority: 2
+    status: pending
+    description: >
+      Snapshot sealed_products daily, build price history. Track which
+      ETBs/boxes are appreciating. Needs new price_history table.
+    tasks:
+      - id: st-schema
+        name: "Backend: sealed_price_history table"
+        status: pending
+        description: >
+          New table: sealed_price_history (id, sealed_product_id, tcg_market,
+          tcg_low, snapshot_date). Daily snapshots from TCGCSV cron.
+        files:
+          - database/schema.py
+      - id: st-snapshot
+        name: "Backend: daily snapshot in TCGCSV cron"
+        status: pending
+        depends_on: [st-schema]
+        description: >
+          After TCGCSV sealed product update, insert snapshot row for each
+          product. One row per product per day.
+        files:
+          - importers/tcgcsv_importer.py
+      - id: st-api
+        name: "API: /api/sealed/<id>/history endpoint"
+        status: pending
+        depends_on: [st-snapshot]
+        description: >
+          Returns price history for a sealed product. Array of {date, market,
+          low} for Chart.js line chart.
+        files:
+          - app.py
+      - id: st-frontend
+        name: "Frontend: sealed product trend charts"
+        status: pending
+        depends_on: [st-api]
+        description: >
+          New /sealed route (or expand existing sealed CLI into web).
+          List all sealed products grouped by set, with sparkline trend
+          charts (Chart.js). Click a product for full-page price history
+          chart with 7d/30d/90d/all toggles. Highlight appreciating products.
+        files:
+          - app.py
+          - templates/sealed.html (new)
+          - templates/sealed_detail.html (new)
+          - templates/base.html (nav link)
+
+  - id: portfolio-tracker
+    name: Portfolio Tracker
+    tier: medium
+    priority: 3
+    status: pending
+    description: >
+      User inputs owned cards, system sums market value. Track over time
+      with daily TCGCSV snapshots. Needs user_collection and price_history
+      tables.
+    tasks:
+      - id: pt-schema
+        name: "Backend: collection + price history tables"
+        status: pending
+        description: >
+          New tables: user_collection (id, card_id, quantity, condition,
+          acquired_price, acquired_date, notes), card_price_history (id,
+          card_id, tcg_market, snapshot_date). No auth for now — single
+          user (local tool).
+        files:
+          - database/schema.py
+      - id: pt-snapshot
+        name: "Backend: daily card price snapshots"
+        status: pending
+        depends_on: [pt-schema]
+        description: >
+          After TCGCSV update, snapshot prices for cards in user's collection.
+          Only snapshot collected cards (not all 20K) to keep DB small.
+        files:
+          - importers/tcgcsv_importer.py
+      - id: pt-backend
+        name: "Backend: portfolio valuation engine"
+        status: pending
+        depends_on: [pt-schema]
+        description: >
+          Functions: total_portfolio_value(), portfolio_by_set(),
+          portfolio_history(days), top_gainers(), top_losers().
+          Condition-adjusted pricing using PokeTrace condition data when
+          available.
+        files:
+          - engine/portfolio.py (new)
+      - id: pt-api
+        name: "API: portfolio CRUD + valuation endpoints"
+        status: pending
+        depends_on: [pt-backend]
+        description: >
+          POST /api/collection/add, DELETE /api/collection/<id>,
+          GET /api/collection, GET /api/collection/value,
+          GET /api/collection/history.
+        files:
+          - app.py
+      - id: pt-frontend
+        name: "Frontend: portfolio management page"
+        status: pending
+        depends_on: [pt-api]
+        description: >
+          New /portfolio route. Shows: total value, daily change, chart of
+          value over time (Chart.js line), breakdown by set (pie chart),
+          full card list with quantity/condition/current price. "Add Card"
+          form with set+card dropdowns and autocomplete. Bulk import via
+          CSV upload.
+        files:
+          - app.py
+          - templates/portfolio.html (new)
+          - templates/base.html (nav link)
+          - static/style.css
+
+  # ──────────────────────────────────────────────────────────
+  # TIER 3: Bigger builds
+  # ──────────────────────────────────────────────────────────
+
+  - id: pack-simulator
+    name: Pack Opening Simulator
+    tier: bigger
+    priority: 2
+    status: pending
+    description: >
+      Monte Carlo simulator using exact pull rates. "Simulate 100 packs
+      of Prismatic Evolutions" -> histogram, probability of profit,
+      best/worst case. Fun interactive tool.
+    tasks:
+      - id: ps-backend
+        name: "Backend: Monte Carlo simulator"
+        status: pending
+        description: >
+          Function that simulates N pack openings using weighted random
+          sampling based on pull rate probabilities. Returns: each simulated
+          pack's cards and value, aggregate stats (mean, median, std dev,
+          min, max, profit rate), histogram bins.
+        files:
+          - engine/simulator.py (new)
+      - id: ps-api
+        name: "API: /api/simulate/<set_id> endpoint"
+        status: pending
+        depends_on: [ps-backend]
+        description: >
+          POST with {n_packs: 100}. Returns simulation results.
+          Cap at 10,000 packs per request for performance.
+        files:
+          - app.py
+      - id: ps-frontend
+        name: "Frontend: interactive pack simulator page"
+        status: pending
+        depends_on: [ps-api]
+        description: >
+          New /simulator route. Set selector dropdown, pack count slider
+          (1-1000), "Open Packs!" button. Results: animated card reveal
+          for single packs (CSS flip animation), histogram chart for
+          bulk sims (Chart.js), running total, best pull highlight.
+          Most engaging/fun page — invest in polish here.
+        files:
+          - app.py
+          - templates/simulator.html (new)
+          - templates/base.html (nav link)
+          - static/style.css (card flip animation)
+          - static/simulator.js (new — complex enough for own file)
+
+  - id: market-dashboard
+    name: Market Intelligence Dashboard
+    tier: bigger
+    priority: 2
+    status: pending
+    description: >
+      Daily price deltas, biggest movers, set-level trend aggregates.
+      Needs price history accumulated over time.
+    depends_on: [sealed-trends]
+    tasks:
+      - id: md-schema
+        name: "Backend: card price history table (if not from portfolio)"
+        status: pending
+        description: >
+          Ensure card_price_history table exists (may share with portfolio
+          tracker). Daily snapshots for ALL priced cards, not just collected.
+          ~20K rows/day = ~600K rows/month. Consider partitioning or
+          retention policy (keep 90 days detail, monthly averages beyond).
+        files:
+          - database/schema.py
+      - id: md-backend
+        name: "Backend: market analytics engine"
+        status: pending
+        depends_on: [md-schema]
+        description: >
+          Functions: biggest_movers(days=1, limit=20), set_trend(set_id, days),
+          market_summary(), rarity_trends(). Compute daily deltas, 7d/30d
+          moving averages, set-level aggregate trends.
+        files:
+          - engine/market.py (new)
+      - id: md-api
+        name: "API: /api/market/* endpoints"
+        status: pending
+        depends_on: [md-backend]
+        description: >
+          GET /api/market/movers?days=1, GET /api/market/summary,
+          GET /api/market/set/<id>/trend, GET /api/market/rarity-trends.
+        files:
+          - app.py
+      - id: md-frontend
+        name: "Frontend: market intelligence dashboard"
+        status: pending
+        depends_on: [md-api]
+        description: >
+          New /market route. Multi-panel dashboard: top movers table
+          (biggest gainers/losers today), market summary cards (total market
+          cap, avg EV change), set trend sparklines, rarity trend charts.
+          Auto-refresh toggle. This is the most data-dense page — use
+          grid layout with Chart.js mini charts.
+        files:
+          - app.py
+          - templates/market.html (new)
+          - templates/base.html (nav link)
+          - static/market.js (new)
+          - static/style.css
+
+  - id: rotation-analyzer
+    name: Rotation Impact Analyzer
+    tier: bigger
+    priority: 3
+    status: pending
+    description: >
+      Track sets approaching Standard rotation, model expected price
+      impact from historical rotation data.
+    tasks:
+      - id: ra-backend
+        name: "Backend: rotation calendar + impact model"
+        status: pending
+        description: >
+          Maintain rotation calendar (which regulation marks rotate when).
+          Historical model: average price drop % when sets rotate out of
+          Standard. Apply to current sets approaching rotation to estimate
+          future value decline.
+        files:
+          - engine/rotation.py (new)
+          - config.py (rotation dates)
+      - id: ra-frontend
+        name: "Frontend: rotation timeline page"
+        status: pending
+        depends_on: [ra-backend]
+        description: >
+          New /rotation route. Visual timeline showing sets and their
+          rotation dates. Color-coded by time remaining (red=soon,
+          yellow=6mo, green=1yr+). Click a set to see projected price
+          impact with confidence interval.
+        files:
+          - app.py
+          - templates/rotation.html (new)
+
+  # ──────────────────────────────────────────────────────────
+  # TIER 1 EXTRA: Pack value distribution tool (already computed)
+  # ──────────────────────────────────────────────────────────
+
+  - id: pack-value-tool
+    name: Pack Value Distribution Tool
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Already computed in EV engine. Surface as a standalone tool with
+      better visualization: probability of $10+, $50+, $100+ packs.
+      Side-by-side set comparison.
+    tasks:
+      - id: pvt-api
+        name: "API: /api/set/<id>/distribution endpoint"
+        status: pending
+        description: >
+          Expose existing calculate_pack_distribution() as JSON API.
+          Already computed — just need the route.
+        files:
+          - app.py
+      - id: pvt-frontend
+        name: "Frontend: enhanced distribution viz on set detail"
+        status: pending
+        depends_on: [pvt-api]
+        description: >
+          Replace current HTML-bar histogram with Chart.js bar chart.
+          Add interactive tooltips showing exact probability per bin.
+          Add "compare with another set" dropdown that overlays a second
+          distribution on the same chart.
+        files:
+          - templates/set_detail.html
+          - static/style.css
+      - id: pvt-compare
+        name: "Frontend: multi-set distribution comparison page"
+        status: pending
+        depends_on: [pvt-api]
+        description: >
+          New /distributions route. Select 2-4 sets, see overlaid
+          distribution charts. Table comparing P(profit), P($10+), etc.
+          across selected sets. Helps answer "which set should I rip?"
+        files:
+          - app.py
+          - templates/distributions.html (new)
+
+  # ──────────────────────────────────────────────────────────
+  # INFRASTRUCTURE: Shared work that multiple features need
+  # ──────────────────────────────────────────────────────────
+
+  - id: chartjs-setup
+    name: Chart.js Integration
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Add Chart.js CDN to base template. Create shared JS helper for
+      consistent chart theming (dark background, gold/blue palette).
+      Multiple features need charts.
+    tasks:
+      - id: cjs-base
+        name: "Frontend: add Chart.js CDN and theme helper"
+        status: pending
+        description: >
+          Add Chart.js v4 CDN script to base.html. Create static/charts.js
+          with helper function createChart(ctx, type, data, options) that
+          applies dark theme defaults (background, gridlines, text colors,
+          font). Consistent color palette: gold (#ffd700), blue (#64b5f6),
+          green (#66bb6a), red (#ef5350), purple (#ce93d8).
+        files:
+          - templates/base.html
+          - static/charts.js (new)
+
+  - id: set-analysis-module
+    name: Set Analysis Engine Module
+    tier: ready
+    priority: 1
+    status: pending
+    description: >
+      Shared engine module for set completion cost, rip-or-flip, cross-set
+      comparisons, and arbitrage. Multiple features depend on this.
+    tasks:
+      - id: sam-create
+        name: "Backend: create engine/set_analysis.py"
+        status: pending
+        description: >
+          New module with functions: get_set_completion_cost(set_id),
+          get_rip_or_flip(set_id), get_cross_set_rarity_stats(era, rarity),
+          get_arbitrage_opportunities(set_id, min_spread). Shared DB queries
+          and price logic. All functions return dicts suitable for JSON
+          serialization.
+        files:
+          - engine/set_analysis.py (new)
+
+
+# ──────────────────────────────────────────────────────────
+# BUILD ORDER (suggested implementation sequence)
+# ──────────────────────────────────────────────────────────
+#
+# Phase 1 — Foundation + Quick Wins (builds on existing data)
+#   1. chartjs-setup          — needed by most features
+#   2. set-analysis-module    — shared backend for tier 1 features
+#   3. nav-overhaul           — dashboard + nav before adding pages
+#   4. set-completion-cost    — simple, high value, uses existing data
+#   5. rip-or-flip            — killer feature, all data ready
+#   6. pack-value-tool        — already computed, just needs better viz
+#
+# Phase 2 — Analysis Tools
+#   7. cross-set-rarity       — comparison shopping tool
+#   8. grading-roi            — uses existing PriceCharting data
+#   9. arbitrage-finder       — TCGPlayer vs eBay spread detection
+#   10. price-rarity-scatter  — visualization, lower priority
+#
+# Phase 3 — Tracking & History (needs new tables + time)
+#   11. sealed-trends         — needs daily snapshots to accumulate
+#   12. pack-simulator        — fun interactive tool
+#   13. portfolio-tracker     — biggest build in this phase
+#
+# Phase 4 — Intelligence (needs accumulated history data)
+#   14. market-dashboard      — needs weeks of price history
+#   15. price-alerts          — needs Telegram integration
+#   16. rotation-analyzer     — research-heavy, niche audience

@@ -207,3 +207,19 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 **Schema:** `sealed_products(set_id, name, product_type, tcg_market, tcg_low, tcg_mid, tcg_high, tcg_direct_low, tcgplayer_product_id, last_updated)`. Product types are classified from the name: booster_box, etb, collection, tin, blister, booster_pack, booster_bundle, build_battle, league, deck, other.
 
 **Tradeoff:** Requires a separate import path and table, but the data model is cleaner. Enables future features like rip-or-flip analysis, sealed product trend tracking, and arbitrage between sealed product types.
+
+---
+
+## 15. Frontend Strategy: Flask + Jinja2 + Chart.js, Not React
+
+**Date:** 2026-03-02
+
+**Decision:** Build all frontend features using Flask server-rendered templates with Jinja2, vanilla JavaScript, and Chart.js (CDN) for visualizations. No React, no build pipeline, no npm.
+
+**Why:** The existing app already has 4 working templates with a consistent dark theme, filters, sorting, and a histogram — all in vanilla JS. Adding React would mean: a build step (webpack/vite), a Node.js dependency, a separate dev server, and rewriting all existing templates. The features on the roadmap (tables, charts, forms, comparison views) are well within what server-rendered HTML + Chart.js can handle.
+
+**Chart.js:** Added via CDN for scatter plots, line charts (price history), bar charts (distributions), and pie charts (portfolio breakdown). Shared theme helper (`static/charts.js`) ensures consistent dark-theme styling across all charts.
+
+**When to reconsider:** If we add real-time features (live price updates, WebSocket-driven dashboards) or highly interactive tools (drag-and-drop deck builder), a client-side framework would make sense. For now, every feature is request-response with optional JS enhancement.
+
+**Tradeoff:** No client-side routing (each page is a full page load), no component reuse across pages (Jinja2 macros and includes handle this adequately), and interactive features require more manual DOM manipulation. But: zero build step, zero Node dependencies, instant deploys, and the entire frontend is readable by anyone who knows HTML.
