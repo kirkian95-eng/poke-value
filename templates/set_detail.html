@@ -43,6 +43,93 @@
     </div>
 </div>
 
+<!-- Set Completion Cost -->
+{% if completion and completion.cards_priced > 0 %}
+<div class="section">
+    <h2>Set Completion Cost</h2>
+    <p style="color:#78909c;margin-bottom:1rem;">Cost to buy one of every card in the set at current prices. {{ completion.cards_priced }}/{{ completion.total_cards }} cards priced{% if completion.cards_missing > 0 %} ({{ completion.cards_missing }} missing){% endif %}.</p>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+        <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:0.8rem 1.2rem;text-align:center;min-width:140px;">
+            <div style="font-size:0.75rem;color:#78909c;text-transform:uppercase;">Market Total</div>
+            <div style="font-size:1.4rem;font-weight:bold;color:#ffd700;">${{ "{:,.2f}".format(completion.total_market) }}</div>
+        </div>
+        <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:0.8rem 1.2rem;text-align:center;min-width:140px;">
+            <div style="font-size:0.75rem;color:#78909c;text-transform:uppercase;">Low Total</div>
+            <div style="font-size:1.4rem;font-weight:bold;color:#66bb6a;">${{ "{:,.2f}".format(completion.total_low) }}</div>
+        </div>
+        <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:0.8rem 1.2rem;text-align:center;min-width:140px;">
+            <div style="font-size:0.75rem;color:#78909c;text-transform:uppercase;">Cards Priced</div>
+            <div style="font-size:1.4rem;font-weight:bold;color:#64b5f6;">{{ completion.cards_priced }}/{{ completion.total_cards }}</div>
+        </div>
+    </div>
+
+    <!-- Rarity Breakdown -->
+    <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:1rem 1.2rem;">
+        <h3 style="margin-bottom:0.8rem;">Cost by Rarity</h3>
+        {% set max_market = completion.breakdown|map(attribute='market')|max %}
+        {% for b in completion.breakdown %}
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+            <div style="width:180px;text-align:right;font-size:0.85rem;color:#b0bec5;flex-shrink:0;">{{ b.rarity }} ({{ b.priced }}/{{ b.count }})</div>
+            <div style="flex:1;background:#1a1a2e;border-radius:3px;height:22px;">
+                {% if max_market > 0 %}
+                <div style="width:{{ (b.market / max_market * 100)|round(1) }}%;height:100%;background:#ffd700;border-radius:3px;min-width:{% if b.market > 0 %}2px{% else %}0{% endif %};"></div>
+                {% endif %}
+            </div>
+            <div style="width:80px;text-align:right;font-size:0.85rem;color:#e0e0e0;flex-shrink:0;">${{ "{:,.2f}".format(b.market) }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Sealed Products — Rip or Flip? -->
+{% if rip_or_flip and rip_or_flip.products %}
+<div class="section">
+    <h2>Sealed Products &mdash; Rip or Flip?</h2>
+    <p style="color:#78909c;margin-bottom:1rem;">EV per pack: ${{ "%.2f"|format(rip_or_flip.ev_per_pack) }}. Is it worth opening, or sell the sealed product?</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Type</th>
+                <th class="text-right">Sealed $</th>
+                <th class="text-right">Packs</th>
+                <th class="text-right">EV Contents</th>
+                <th class="text-right">Margin</th>
+                <th>Verdict</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in rip_or_flip.products %}
+            <tr>
+                <td>{{ p.name[:50] }}</td>
+                <td style="color:#78909c;">{{ p.product_type or '?' }}</td>
+                <td class="text-right">${{ "{:,.2f}".format(p.tcg_market) if p.tcg_market else 'N/A' }}</td>
+                <td class="text-right">{{ p.pack_count or '?' }}</td>
+                <td class="text-right">{% if p.ev_contents %}${{ "{:,.2f}".format(p.ev_contents) }}{% else %}-{% endif %}</td>
+                <td class="text-right" style="{% if p.margin > 0 %}color:#66bb6a;{% elif p.margin < 0 %}color:#ef5350;{% endif %}">
+                    {% if p.ev_contents %}{{ "%+.2f"|format(p.margin) }} ({{ "%+.1f"|format(p.margin_pct) }}%){% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if p.verdict == 'rip' %}
+                    <span style="background:#66bb6a;color:#1a1a2e;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">RIP</span>
+                    {% elif p.verdict == 'flip' %}
+                    <span style="background:#ef5350;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">FLIP</span>
+                    {% elif p.verdict == 'even' %}
+                    <span style="background:#ffd700;color:#1a1a2e;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">EVEN</span>
+                    {% else %}
+                    <span style="color:#78909c;">?</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <!-- God Pack Info -->
 {% if god_packs %}
 <div class="section">
@@ -94,30 +181,110 @@
         </div>
     </div>
 
-    <!-- Histogram -->
+    <!-- Histogram (Chart.js) -->
     {% if distribution.histogram %}
     <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:1rem 1.2rem;">
         <h3 style="margin-bottom:0.8rem;">Value Distribution</h3>
-        {% set max_pct = distribution.histogram|map(attribute='probability')|max %}
-        {% for bin in distribution.histogram %}
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
-            <div style="width:90px;text-align:right;font-size:0.85rem;color:#b0bec5;flex-shrink:0;">{{ bin.label }}</div>
-            <div style="flex:1;background:#1a1a2e;border-radius:3px;height:22px;position:relative;">
-                {% if max_pct > 0 %}
-                <div style="width:{{ (bin.probability / max_pct * 100)|round(1) }}%;height:100%;background:{% if bin.min_val >= 4.49 %}#66bb6a{% elif bin.min_val >= 2 %}#ffd700{% else %}#ef5350{% endif %};border-radius:3px;min-width:{% if bin.probability > 0 %}2px{% else %}0{% endif %};"></div>
-                {% endif %}
-            </div>
-            <div style="width:50px;text-align:right;font-size:0.8rem;color:#78909c;flex-shrink:0;">{{ bin.probability }}%</div>
+        <div style="height:300px;">
+            <canvas id="dist-chart"></canvas>
         </div>
-        {% endfor %}
         <div style="margin-top:0.5rem;font-size:0.75rem;color:#546e7a;">
             <span style="color:#ef5350;">&#9632;</span> Below MSRP &nbsp;
             <span style="color:#ffd700;">&#9632;</span> Near MSRP &nbsp;
             <span style="color:#66bb6a;">&#9632;</span> Above MSRP ($4.49)
         </div>
     </div>
+    <script>
+    (function() {
+        var bins = {{ distribution.histogram | tojson }};
+        var labels = bins.map(function(b) { return b.label; });
+        var data = bins.map(function(b) { return b.probability; });
+        var colors = bins.map(function(b) {
+            if (b.min_val >= 4.49) return '#66bb6a';
+            if (b.min_val >= 2) return '#ffd700';
+            return '#ef5350';
+        });
+        createChart('dist-chart', 'bar', {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 0,
+            }]
+        }, {
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) { return ctx.parsed.y.toFixed(1) + '%'; }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Probability %', color: '#78909c' },
+                    ticks: { color: '#b0bec5' },
+                    grid: { color: '#1a2744' },
+                },
+                x: {
+                    ticks: { color: '#b0bec5', maxRotation: 45 },
+                    grid: { display: false },
+                }
+            }
+        });
+    })();
+    </script>
     {% endif %}
 </div>
+{% endif %}
+
+<!-- Price vs Rarity Scatter -->
+{% if scatter_data and scatter_data|length > 5 %}
+<div class="section">
+    <h2>Price vs Rarity</h2>
+    <p style="color:#78909c;margin-bottom:1rem;">Each dot is a card. Outliers (expensive commons, cheap ultra rares) stand out from the cluster.</p>
+    <div style="height:350px;">
+        <canvas id="scatter-chart"></canvas>
+    </div>
+</div>
+<script>
+(function() {
+    const data = {{ scatter_data|tojson }};
+    const rarityLabels = ['', 'Common', 'Uncommon', 'Rare', 'Holo', 'Ultra', 'V/EX/GX', 'IR/Shiny', 'Secret', 'SIR', 'Hyper'];
+    const colors = ['#78909c', '#78909c', '#4db6ac', '#64b5f6', '#ffd700', '#ffa726', '#ce93d8', '#f06292', '#ef5350', '#66bb6a', '#ffd700'];
+    createChart('scatter-chart', 'scatter', {
+        datasets: [{
+            label: 'Cards',
+            data: data.map(d => ({ x: d.price, y: d.rarity_rank, label: d.name, rarity: d.rarity })),
+            backgroundColor: data.map(d => colors[d.rarity_rank] || '#78909c'),
+            pointRadius: 5,
+            pointHoverRadius: 8,
+        }]
+    }, {
+        plugins: {
+            title: { display: true, text: 'Card Price vs Rarity Tier', color: '#ffd700' },
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: ctx => { const d = ctx.raw; return [d.label, d.rarity, '$' + d.x.toLocaleString()]; }
+                }
+            },
+        },
+        scales: {
+            x: {
+                type: 'logarithmic',
+                title: { display: true, text: 'Price (USD, log scale)', color: '#b0bec5' },
+                ticks: { color: '#b0bec5', callback: v => '$' + v.toLocaleString() },
+            },
+            y: {
+                min: 0, max: 10,
+                title: { display: true, text: 'Rarity Tier', color: '#b0bec5' },
+                ticks: { color: '#b0bec5', stepSize: 1, callback: v => rarityLabels[v] || '' },
+            },
+        },
+    });
+})();
+</script>
 {% endif %}
 
 <!-- EV Breakdown by Rarity -->

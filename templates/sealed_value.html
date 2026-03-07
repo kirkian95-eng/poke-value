@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Sealed Value Breakdown - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Sealed Product Value Breakdown</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Are the packs and promos inside worth more than the sealed price? Compares individual component values to the sealed product market price.</p>
+
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Products Analyzed</div>
+        <div class="value" style="color:#64b5f6;">{{ products|length }}</div>
+    </div>
+    {% set deals = products|selectattr('resale_delta', 'gt', 0)|list %}
+    <div class="stat">
+        <div class="label">Contents Worth More</div>
+        <div class="value" style="color:#66bb6a;">{{ deals|length }}</div>
+    </div>
+    {% set premiums = products|selectattr('resale_delta', 'lt', 0)|list %}
+    <div class="stat">
+        <div class="label">Sealed Premium</div>
+        <div class="value" style="color:#ef5350;">{{ premiums|length }}</div>
+    </div>
+    {% if products %}
+    {% set best = products|sort(attribute='resale_delta', reverse=true)|first %}
+    <div class="stat">
+        <div class="label">Best Value</div>
+        <div class="value" style="color:#66bb6a;font-size:1.2rem;">{% if best.resale_delta >= 0 %}+{% endif %}${{ "{:,.0f}".format(best.resale_delta) }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="controls">
+    <select id="set-filter" onchange="applyFilter()">
+        <option value="">All Sets</option>
+        {% for s in sets %}
+        <option value="{{ s.id }}" {% if current_set == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select id="type-filter" onchange="applyFilter()">
+        <option value="">All Types</option>
+        <option value="box" {% if current_type == 'box' %}selected{% endif %}>Booster Boxes</option>
+        <option value="etb" {% if current_type == 'etb' %}selected{% endif %}>Elite Trainer Boxes</option>
+        <option value="upc" {% if current_type == 'upc' %}selected{% endif %}>Ultra-Premium Collections</option>
+    </select>
+    <input type="text" id="search" placeholder="Search products..." oninput="filterRows()">
+</div>
+
+<table id="sealed-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Product</th>
+            <th onclick="sortTable(1)">Set</th>
+            <th onclick="sortTable(2)" class="text-right">Packs</th>
+            <th onclick="sortTable(3)" class="text-right">Sealed $</th>
+            <th onclick="sortTable(4)" class="text-right">Packs Resale</th>
+            <th onclick="sortTable(5)" class="text-right">Promos</th>
+            <th onclick="sortTable(6)" class="text-right">Contents Total</th>
+            <th onclick="sortTable(7)" class="text-right">Delta</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in products %}
+        <tr data-name="{{ p.product_name|lower }} {{ p.set_name|lower }}" class="expandable-row" onclick="toggleDetail(this)">
+            <td>
+                <span style="color:#fff;">{{ p.product_name[:55] }}</span>
+                {% if p.promos %}<span style="color:#ce93d8;font-size:0.75em;" title="Has promo card data"> +promos</span>{% endif %}
+            </td>
+            <td style="color:#78909c;font-size:0.85em;">{{ p.set_name[:25] }}</td>
+            <td class="text-right">{{ p.num_packs }}</td>
+            <td class="text-right" style="color:#ffd700;font-weight:bold;">${{ "{:,.2f}".format(p.sealed_price) }}</td>
+            <td class="text-right" style="color:#64b5f6;">${{ "{:,.2f}".format(p.pack_resale_total) }}</td>
+            <td class="text-right" style="color:#ce93d8;">{% if p.promo_total > 0 %}${{ "{:,.2f}".format(p.promo_total) }}{% else %}-{% endif %}</td>
+            <td class="text-right" style="font-weight:bold;">${{ "{:,.2f}".format(p.resale_total) }}</td>
+            <td class="text-right" style="font-weight:bold;color:{% if p.resale_delta >= 0 %}#66bb6a{% else %}#ef5350{% endif %};">{% if p.resale_delta >= 0 %}+{% endif %}${{ "{:,.2f}".format(p.resale_delta) }}</td>
+        </tr>
+        <tr class="detail-row" style="display:none;">
+            <td colspan="8" style="background:#0f1e38;padding:0.8rem 1.2rem;">
+                <div style="display:flex;gap:2rem;flex-wrap:wrap;font-size:0.85rem;">
+                    <div>
+                        <div style="color:#78909c;text-transform:uppercase;font-size:0.75rem;">Pack Value</div>
+                        <div style="color:#b0bec5;">{{ p.num_packs }} packs &times; ${{ "{:,.2f}".format(p.pack_market_each) }} = <span style="color:#64b5f6;">${{ "{:,.2f}".format(p.pack_resale_total) }}</span></div>
+                        <div style="color:#546e7a;">EV if opened: {{ p.num_packs }} &times; ${{ "{:,.2f}".format(p.pack_ev_each) }} = ${{ "{:,.2f}".format(p.pack_ev_total) }}</div>
+                    </div>
+                    {% if p.promos %}
+                    <div>
+                        <div style="color:#78909c;text-transform:uppercase;font-size:0.75rem;">Promo Cards</div>
+                        {% for promo in p.promos %}
+                        <div style="color:#b0bec5;">{{ promo.name }} — <span style="color:#ce93d8;">${{ "{:,.2f}".format(promo.price) }}</span></div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <div>
+                        <div style="color:#78909c;text-transform:uppercase;font-size:0.75rem;">Summary</div>
+                        <div style="color:#b0bec5;">Resale total: <span style="font-weight:bold;">${{ "{:,.2f}".format(p.resale_total) }}</span></div>
+                        <div style="color:#b0bec5;">EV total: ${{ "{:,.2f}".format(p.ev_total) }}</div>
+                        <div style="color:{% if p.resale_delta >= 0 %}#66bb6a{% else %}#ef5350{% endif %};font-weight:bold;">
+                            vs sealed: {% if p.resale_delta >= 0 %}+{% endif %}${{ "{:,.2f}".format(p.resale_delta) }}
+                            ({% if p.resale_delta >= 0 %}parts worth more{% else %}sealed commands ${{ "{:,.2f}".format(p.resale_delta|abs) }} premium{% endif %})
+                        </div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not products %}
+<p style="color:#78909c;">No products found{% if current_set %} for this set{% endif %}{% if current_type %} of this type{% endif %}.</p>
+{% endif %}
+
+<p style="color:#546e7a;font-size:0.8em;margin-top:1rem;">
+    <strong>Packs Resale</strong> = individual booster pack market price &times; pack count.<br>
+    <strong>Promos</strong> = market price of included promo cards (where tracked).<br>
+    <strong>Delta</strong> = Contents Total - Sealed Price. Positive = cheaper to buy sealed. Negative = sealed commands a premium.<br>
+    Click any row for details. Booster boxes = 36 packs, ETBs = 8-9 packs (by era), UPCs = 16 packs.
+</p>
+
+<script>
+function applyFilter() {
+    const set = document.getElementById('set-filter').value;
+    const type = document.getElementById('type-filter').value;
+    let url = '/sealed-value';
+    const params = [];
+    if (set) params.push('set=' + set);
+    if (type) params.push('type=' + type);
+    if (params.length) url += '?' + params.join('&');
+    window.location.href = url;
+}
+
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const rows = document.querySelectorAll('#sealed-table tbody tr.expandable-row');
+    rows.forEach(row => {
+        const show = !search || row.dataset.name.includes(search);
+        row.style.display = show ? '' : 'none';
+        row.nextElementSibling.style.display = 'none';
+    });
+}
+
+function toggleDetail(row) {
+    const detail = row.nextElementSibling;
+    detail.style.display = detail.style.display === 'none' ? '' : 'none';
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#sealed-table tbody');
+    const rows = [];
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
+    for (let i = 0; i < allRows.length; i += 2) {
+        rows.push({ main: allRows[i], detail: allRows[i + 1] });
+    }
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.main.children[col].textContent.trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace(/promos/g, '').replace('-', '0');
+        let bV = b.main.children[col].textContent.trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace(/promos/g, '').replace('-', '0');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => { tbody.appendChild(r.main); tbody.appendChild(r.detail); });
+}
+</script>
+{% endblock %}

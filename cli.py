@@ -36,6 +36,17 @@ def main():
     p_sealed = sub.add_parser("sealed", help="Show sealed product prices for a set")
     p_sealed.add_argument("--set", required=True, help="Set ID")
 
+    p_completion = sub.add_parser("completion-cost", help="Show set completion cost")
+    p_completion.add_argument("--set", required=True, help="Set ID")
+
+    p_psa = sub.add_parser("import-psa-pop", help="Import PSA pop reports from PriceCharting")
+    p_psa.add_argument("--set", help="Single set ID")
+    p_psa.add_argument("--era", help="Filter by era")
+    p_psa.add_argument("--all", action="store_true", help="All sets")
+    p_psa.add_argument("--prices", action="store_true", help="Also fetch per-card graded prices (slow)")
+    p_psa.add_argument("--min-price", type=float, default=5.0, help="Min raw price for graded fetch")
+    p_psa.add_argument("--max-cards", type=int, default=50, help="Max cards per set for graded prices")
+
     p_stats = sub.add_parser("stats", help="Show database statistics")
 
     args = parser.parse_args()
@@ -102,8 +113,25 @@ def main():
             except Exception as e:
                 print(f"{row['name']:40s} | ERROR: {e}")
 
+    elif args.command == "completion-cost":
+        _print_completion_cost(args.set)
+
     elif args.command == "sealed":
         _print_sealed(args.set)
+
+    elif args.command == "import-psa-pop":
+        from importers.pricecharting_scraper import (
+            import_set_pop, import_all_set_pops, import_card_graded_prices
+        )
+        if args.set:
+            import_set_pop(args.set)
+            if args.prices:
+                import_card_graded_prices(args.set, min_price=args.min_price,
+                                          max_cards=args.max_cards)
+        elif args.all or args.era:
+            import_all_set_pops(era_filter=args.era)
+        else:
+            print("Specify --set, --era, or --all")
 
     elif args.command == "stats":
         _print_stats()
@@ -156,6 +184,29 @@ def _print_ev_result(result):
     for b in result['ev_breakdown']:
         print(f"  {b['rarity']:30s} | {b['card_count']:>5d} | ${b['avg_price']:>5.2f} | "
               f"${b['ev_contribution']:>6.4f} | {b['slot_type']:>10s}")
+    print()
+
+
+def _print_completion_cost(set_id):
+    """Pretty-print set completion cost."""
+    from engine.set_analysis import get_set_completion_cost
+    result = get_set_completion_cost(set_id)
+    if not result:
+        print(f"Set {set_id} not found")
+        return
+    print(f"\n{'=' * 60}")
+    print(f"  Set Completion Cost: {result['set_name']}")
+    print(f"{'=' * 60}")
+    print(f"  Market total:  ${result['total_market']:>10,.2f}")
+    print(f"  Low total:     ${result['total_low']:>10,.2f}")
+    print(f"  Mid total:     ${result['total_mid']:>10,.2f}")
+    print(f"  Cards priced:  {result['cards_priced']}/{result['total_cards']}"
+          f"{'  (' + str(result['cards_missing']) + ' missing)' if result['cards_missing'] else ''}")
+    print(f"\n  {'Rarity':30s} | {'Cards':>6s} | {'Priced':>6s} | {'Market':>10s} | {'Low':>10s}")
+    print(f"  {'-' * 75}")
+    for b in result['breakdown']:
+        print(f"  {b['rarity']:30s} | {b['count']:>6d} | {b['priced']:>6d} | "
+              f"${b['market']:>9,.2f} | ${b['low']:>9,.2f}")
     print()
 
 
@@ -219,6 +270,12 @@ def _print_stats():
             sealed_count = conn.execute("SELECT COUNT(*) FROM sealed_products").fetchone()[0]
         except Exception:
             sealed_count = 0
+        try:
+            psa_count = conn.execute("SELECT COUNT(*) FROM psa_pop").fetchone()[0]
+            graded_count = conn.execute("SELECT COUNT(DISTINCT card_id) FROM graded_prices").fetchone()[0]
+        except Exception:
+            psa_count = 0
+            graded_count = 0
 
         print(f"\nDatabase Statistics:")
         print(f"  Sets:            {sets_count}")
@@ -227,6 +284,8 @@ def _print_stats():
         print(f"  Sealed products: {sealed_count}")
         print(f"  EV cached:       {ev_count}")
         print(f"  Pull templates:  {templates_count}")
+        print(f"  PSA pop data:    {psa_count}")
+        print(f"  Graded prices:   {graded_count}")
 
         if prices_count > 0:
             priced_sets = conn.execute("""

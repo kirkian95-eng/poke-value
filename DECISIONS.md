@@ -4,6 +4,18 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 
 ---
 
+## #19 Sealed Value Auto-Detection vs Manual Mapping
+
+**Date:** 2026-03-07
+
+**Decision:** Auto-detect booster boxes (36 packs), enhanced boxes (30), ETBs (8-9 by era), and UPCs (16) from product_type + name patterns. Only manually map promo card IDs in `PRODUCT_PROMOS` for the small subset of products with valuable promos.
+
+**Why:** Manual `PRODUCT_CONTENTS` mapping required listing every product individually (7 entries covered 7 products). With 159+ qualifying sealed products across all eras, manual mapping doesn't scale. Pack counts are highly predictable from product type — booster boxes are always 36, ETBs are always 8 or 9 (era-dependent), UPCs are always 16.
+
+**Tradeoff:** Some niche products (special collections, tins with unusual pack counts) may be missed or get wrong pack counts. We filter these out with `_SEALED_SKIP` and the minimum 4-pack threshold. Promo card data is incomplete — only mapped for 151 and a few SWSH UPCs — but the tool still works without it (promos just show as $0).
+
+---
+
 ## TCGCSV Variant Selection Strategy
 
 **Date:** 2026-03-03
@@ -245,3 +257,35 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 **When to reconsider:** If we add real-time features (live price updates, WebSocket-driven dashboards) or highly interactive tools (drag-and-drop deck builder), a client-side framework would make sense. For now, every feature is request-response with optional JS enhancement.
 
 **Tradeoff:** No client-side routing (each page is a full page load), no component reuse across pages (Jinja2 macros and includes handle this adequately), and interactive features require more manual DOM manipulation. But: zero build step, zero Node dependencies, instant deploys, and the entire frontend is readable by anyone who knows HTML.
+
+---
+
+## 16. Grade Distribution for Grading ROI Calculator
+
+**Date:** 2026-03-07
+
+**Decision:** Use fixed community-average grade distribution: 15% PSA 10, 40% PSA 9, 25% PSA 8, 10% PSA 7, 5% PSA 6, 3% PSA 5, 2% PSA 4. Normalize when not all grades have prices.
+
+**Why:** PSA does not publish official grade distribution data. These percentages are community estimates from Pokemon card grading forums and YouTube sample sets. They assume pack-fresh cards submitted for grading (not already-damaged cards). The actual distribution varies by card age, set quality, and centering — modern cards tend to grade higher. But a fixed distribution gives a useful baseline ROI estimate.
+
+**Tradeoff:** A card that consistently grades PSA 10 at 30% would show lower expected value than reality. Could add per-card or per-era grade distributions in the future. The fee selector (JS-based, $20/$50/$100/$150) lets users adjust the other major variable without a page reload.
+
+---
+
+## 17. Arbitrage Data Source Limitations
+
+**Date:** 2026-03-07
+
+**Decision:** Arbitrage finder compares TCGPlayer market price (TCGCSV) vs PriceCharting ungraded price (from graded_prices table). Currently limited to ~20 cards that have both data sources.
+
+**Why:** TCGPlayer and PriceCharting/eBay can have meaningful price differences for the same card. TCGPlayer reflects listing prices; PriceCharting reflects eBay sold prices. The spread is actionable but must account for platform fees (13% eBay, 12% TCGPlayer) and shipping. Coverage will grow as more PriceCharting data is imported via `import-psa-pop --prices`.
+
+---
+
+## 18. Rarity Rank Mapping for Scatter Plots
+
+**Date:** 2026-03-07
+
+**Decision:** Map all 38 observed rarity types to 9 tiers (1=Common through 9=Hyper Rare) for the price-vs-rarity scatter plot Y-axis. Unmapped rarities default to tier 3 (Rare).
+
+**Why:** Pokemon TCG has used inconsistent rarity names across eras (e.g., "Rare Ultra" vs "Ultra Rare", "Rare Shiny" vs "Shiny Rare"). A numeric tier system normalizes these for cross-era visualization. The mapping was built by reviewing all 38 rarity types in the database and grouping by approximate pull rate and value tier.

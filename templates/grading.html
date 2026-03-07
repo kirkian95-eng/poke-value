@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Grading ROI Calculator - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Grading ROI Calculator</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Should you grade this card? Expected profit based on grade distribution (15% PSA 10, 40% PSA 9, 25% PSA 8, 10% PSA 7, 10% lower) and graded market prices.</p>
+
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Cards Analyzed</div>
+        <div class="value" style="color:#64b5f6;">{{ cards|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Grading Fee</div>
+        <div class="value" style="color:#ffd700;">${{ "{:,.0f}".format(current_fee) }}</div>
+    </div>
+    {% set profitable = cards|selectattr('expected_profit', 'gt', 0)|list %}
+    <div class="stat">
+        <div class="label">Profitable</div>
+        <div class="value" style="color:#66bb6a;">{{ profitable|length }}/{{ cards|length }}</div>
+    </div>
+    {% if cards %}
+    <div class="stat">
+        <div class="label">Best ROI</div>
+        <div class="value" style="color:#66bb6a;">{{ "{:,.1f}".format(cards[0].roi_pct) }}%</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="controls">
+    <select id="fee-select" onchange="updateFee()">
+        <option value="20" {% if current_fee == 20 %}selected{% endif %}>PSA Economy ($20)</option>
+        <option value="50" {% if current_fee == 50 %}selected{% endif %}>PSA Regular ($50)</option>
+        <option value="100" {% if current_fee == 100 %}selected{% endif %}>PSA Express ($100)</option>
+        <option value="150" {% if current_fee == 150 %}selected{% endif %}>PSA Super Express ($150)</option>
+    </select>
+    <select id="set-filter" onchange="applyFilters()">
+        <option value="">All Sets</option>
+        {% for s in sets %}
+        <option value="{{ s.id }}" {% if current_set == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="text" id="search" placeholder="Search cards..." oninput="filterRows()">
+</div>
+
+<table id="grading-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Card</th>
+            <th onclick="sortTable(1)">Set</th>
+            <th onclick="sortTable(2)">Rarity</th>
+            <th onclick="sortTable(3)" class="text-right">Raw Price</th>
+            <th onclick="sortTable(4)" class="text-right">Expected Value</th>
+            <th onclick="sortTable(5)" class="text-right">Expected Profit</th>
+            <th onclick="sortTable(6)" class="text-right">ROI %</th>
+            <th onclick="sortTable(7)" class="text-right">PSA 10 Price</th>
+            <th onclick="sortTable(8)" class="text-right">PSA 10 Premium</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in cards %}
+        <tr data-name="{{ c.card_name|lower }} {{ c.set_name|lower }}" data-raw="{{ c.raw_price }}" data-ev="{{ c.expected_graded_value }}">
+            <td>
+                <span style="color:#fff;">{{ c.card_name }}</span>
+                <span style="color:#546e7a;font-size:0.8em;"> #{{ c.card_number }}</span>
+            </td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.set_name }}</td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.rarity or '-' }}</td>
+            <td class="text-right">${{ "{:,.2f}".format(c.raw_price) }}</td>
+            <td class="text-right" style="color:#64b5f6;">${{ "{:,.2f}".format(c.expected_graded_value) }}</td>
+            <td class="text-right fee-profit" style="color:{% if c.expected_profit > 0 %}#66bb6a{% else %}#ef5350{% endif %};font-weight:bold;">${{ "{:,.2f}".format(c.expected_profit) }}</td>
+            <td class="text-right fee-roi" style="color:{% if c.roi_pct > 0 %}#66bb6a{% elif c.roi_pct > -20 %}#ffd700{% else %}#ef5350{% endif %};font-weight:bold;">{{ "{:,.1f}".format(c.roi_pct) }}%</td>
+            <td class="text-right" style="color:#ffd700;">{% if c.psa_10_price %}${{ "{:,.2f}".format(c.psa_10_price) }}{% else %}-{% endif %}</td>
+            <td class="text-right">{% if c.psa_10_premium %}{{ c.psa_10_premium }}x{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not cards %}
+<p style="color:#78909c;">No cards with graded price data{% if current_set %} in this set{% endif %}. Import graded prices with: <code>python3 cli.py import-psa-pop --set &lt;id&gt; --prices</code></p>
+{% endif %}
+
+<p style="color:#546e7a;font-size:0.8em;margin-top:1rem;">
+    Grade distribution: 15% PSA 10, 40% PSA 9, 25% PSA 8, 10% PSA 7, 10% lower.
+    Expected Value = weighted average of graded prices across all grades.
+    Profit = Expected Value - Raw Price - Grading Fee.
+    ROI = Profit / (Raw Price + Fee).
+</p>
+
+<script>
+function updateFee() {
+    const fee = parseFloat(document.getElementById('fee-select').value);
+    document.querySelectorAll('#grading-table tbody tr').forEach(row => {
+        const raw = parseFloat(row.dataset.raw);
+        const ev = parseFloat(row.dataset.ev);
+        const profit = ev - raw - fee;
+        const roi = (profit / (raw + fee)) * 100;
+        const profitEl = row.querySelector('.fee-profit');
+        const roiEl = row.querySelector('.fee-roi');
+        profitEl.textContent = (profit >= 0 ? '+' : '') + profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        profitEl.style.color = profit > 0 ? '#66bb6a' : '#ef5350';
+        roiEl.textContent = roi.toFixed(1) + '%';
+        roiEl.style.color = roi > 0 ? '#66bb6a' : (roi > -20 ? '#ffd700' : '#ef5350');
+    });
+}
+
+function applyFilters() {
+    const set = document.getElementById('set-filter').value;
+    const fee = document.getElementById('fee-select').value;
+    let url = '/grading?fee=' + fee;
+    if (set) url += '&set=' + set;
+    window.location.href = url;
+}
+
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('#grading-table tbody tr').forEach(row => {
+        row.style.display = !search || row.dataset.name.includes(search) ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#grading-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,%x+]/g, '').replace(/,/g, '').replace('-', '-999999');
+        let bV = b.children[col].textContent.trim().replace(/[$,%x+]/g, '').replace(/,/g, '').replace('-', '-999999');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

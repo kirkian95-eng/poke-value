@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Rarity Comparison - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Cross-Set Rarity Comparison</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Which set has the cheapest chase cards? Compare average prices by rarity across all sets.</p>
+
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Sets Compared</div>
+        <div class="value" style="color:#64b5f6;">{{ data|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Rarity</div>
+        <div class="value" style="color:#ffd700;font-size:1.1rem;">{{ current_rarity }}</div>
+    </div>
+    {% if data %}
+    <div class="stat">
+        <div class="label">Cheapest Avg</div>
+        <div class="value" style="color:#66bb6a;">${{ "{:,.2f}".format(data|map(attribute='avg_price')|min) }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Most Expensive Avg</div>
+        <div class="value" style="color:#ef5350;">${{ "{:,.2f}".format(data|map(attribute='avg_price')|max) }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="controls">
+    <select id="rarity-filter" onchange="applyFilters()">
+        {% for r in rarities %}
+        <option value="{{ r.rarity }}" {% if current_rarity == r.rarity %}selected{% endif %}>{{ r.rarity }} ({{ r.cnt }})</option>
+        {% endfor %}
+    </select>
+    <select id="era-filter" onchange="applyFilters()">
+        <option value="">All Eras</option>
+        <option value="sv" {% if current_era == 'sv' %}selected{% endif %}>Scarlet & Violet</option>
+        <option value="swsh" {% if current_era == 'swsh' %}selected{% endif %}>Sword & Shield</option>
+        <option value="sm" {% if current_era == 'sm' %}selected{% endif %}>Sun & Moon</option>
+        <option value="xy" {% if current_era == 'xy' %}selected{% endif %}>XY</option>
+        <option value="bw" {% if current_era == 'bw' %}selected{% endif %}>Black & White</option>
+        <option value="classic" {% if current_era == 'classic' %}selected{% endif %}>Classic</option>
+    </select>
+    <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
+</div>
+
+{% if data|length > 3 %}
+<div style="height:350px;margin-bottom:2rem;">
+    <canvas id="rarityChart"></canvas>
+</div>
+{% endif %}
+
+<table id="compare-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Set</th>
+            <th onclick="sortTable(1)">Era</th>
+            <th onclick="sortTable(2)" class="text-right">Cards</th>
+            <th onclick="sortTable(3)" class="text-right">Avg Price</th>
+            <th onclick="sortTable(4)" class="text-right">Min Price</th>
+            <th onclick="sortTable(5)" class="text-right">Max Price</th>
+            <th onclick="sortTable(6)" class="text-right">Total</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for d in data %}
+        <tr data-name="{{ d.set_name|lower }}" data-era="{{ d.era or '' }}">
+            <td><a href="{{ url_for('set_detail', set_id=d.set_id) }}">{{ d.set_name }}</a></td>
+            <td style="color:#78909c;">{{ d.era or '?' }}</td>
+            <td class="text-right">{{ d.priced }}/{{ d.card_count }}</td>
+            <td class="text-right" style="font-weight:bold;color:#ffd700;">${{ "{:,.2f}".format(d.avg_price) }}</td>
+            <td class="text-right" style="color:#66bb6a;">${{ "{:,.2f}".format(d.min_price) }}</td>
+            <td class="text-right" style="color:#ef5350;">${{ "{:,.2f}".format(d.max_price) }}</td>
+            <td class="text-right">${{ "{:,.2f}".format(d.total_price) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not data %}
+<p style="color:#78909c;">No sets found with priced {{ current_rarity }} cards{% if current_era %} in the {{ current_era }} era{% endif %}.</p>
+{% endif %}
+
+<script>
+function applyFilters() {
+    const rarity = document.getElementById('rarity-filter').value;
+    const era = document.getElementById('era-filter').value;
+    let url = '/compare?rarity=' + encodeURIComponent(rarity);
+    if (era) url += '&era=' + era;
+    window.location.href = url;
+}
+
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('#compare-table tbody tr').forEach(row => {
+        row.style.display = !search || row.dataset.name.includes(search) ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#compare-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
+        let bV = b.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+{% if data|length > 3 %}
+const cmpData = {{ data|tojson }};
+createChart('rarityChart', 'bar', {
+    labels: cmpData.map(d => d.set_name.length > 25 ? d.set_name.substring(0, 22) + '...' : d.set_name),
+    datasets: [{
+        label: 'Avg Price',
+        data: cmpData.map(d => d.avg_price),
+        backgroundColor: cmpData.map(d => {
+            const prices = cmpData.map(x => x.avg_price);
+            const mn = Math.min(...prices), mx = Math.max(...prices);
+            const pct = mx > mn ? (d.avg_price - mn) / (mx - mn) : 0.5;
+            if (pct < 0.33) return CHART_COLORS.green;
+            if (pct < 0.66) return CHART_COLORS.gold;
+            return CHART_COLORS.red;
+        }),
+    }]
+}, {
+    plugins: {
+        title: { display: true, text: '{{ current_rarity }} — Average Price by Set', color: '#ffd700' },
+        legend: { display: false },
+    },
+    scales: {
+        x: { ticks: { color: '#b0bec5', maxRotation: 45 } },
+        y: {
+            title: { display: true, text: 'Average Price (USD)', color: '#b0bec5' },
+            ticks: { color: '#b0bec5', callback: v => '$' + v.toLocaleString() },
+        },
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Pack Investment ROI - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Sealed Pack Investment ROI</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">What if you bought a loose booster pack at release for $4 and held it sealed? Annualized ROI vs S&P 500 benchmark (~10%/yr).</p>
+
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Sets Tracked</div>
+        <div class="value" style="color:#64b5f6;">{{ packs|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Best Annualized ROI</div>
+        <div class="value" style="color:#66bb6a;">
+            {% if packs %}{{ "%.1f"|format(packs|map(attribute='annualized_roi_pct')|max) }}%{% else %}-{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Most Valuable Pack</div>
+        <div class="value" style="color:#ffd700;">
+            {% if packs %}${{ "{:,.2f}".format(packs|map(attribute='current_price')|max) }}{% else %}-{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Cost Basis (All Packs)</div>
+        <div class="value" style="color:#b0bec5;">$4.00</div>
+    </div>
+</div>
+
+<div style="height:420px;margin-bottom:2rem;">
+    <canvas id="packValueChart"></canvas>
+</div>
+
+<div style="height:380px;margin-bottom:2rem;">
+    <canvas id="roiChart"></canvas>
+</div>
+
+<div class="controls">
+    <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
+    <select id="era-filter" onchange="filterRows()">
+        <option value="">All Eras</option>
+        <option value="classic">Classic / WOTC</option>
+        <option value="neo">Neo</option>
+        <option value="ex">ex</option>
+        <option value="dp">Diamond & Pearl</option>
+        <option value="pl">Platinum</option>
+        <option value="hgss">HGSS</option>
+        <option value="bw">Black & White</option>
+        <option value="xy">XY</option>
+        <option value="sm">Sun & Moon</option>
+        <option value="swsh">Sword & Shield</option>
+        <option value="sv">Scarlet & Violet</option>
+    </select>
+</div>
+
+<table id="pack-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Set</th>
+            <th onclick="sortTable(1)">Era</th>
+            <th onclick="sortTable(2)" class="text-right">Year</th>
+            <th onclick="sortTable(3)" class="text-right">Years Held</th>
+            <th onclick="sortTable(4)" class="text-right">Current Value</th>
+            <th onclick="sortTable(5)" class="text-right">Total Return</th>
+            <th onclick="sortTable(6)" class="text-right">Annualized ROI</th>
+            <th onclick="sortTable(7)" class="text-right">vs S&P</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in packs %}
+        {% set sp500_equiv = ((1.10 ** p.years_held) * 4.00) %}
+        {% set beats_sp500 = p.annualized_roi_pct > 10 %}
+        <tr data-name="{{ p.set_name|lower }}" data-era="{{ p.era or '' }}">
+            <td><a href="{{ url_for('set_detail', set_id=p.set_id) }}" style="color:#64b5f6;">{{ p.set_name }}</a></td>
+            <td>{{ p.era or '?' }}</td>
+            <td class="text-right">{{ p.release_year }}</td>
+            <td class="text-right">{{ p.years_held }}y</td>
+            <td class="text-right" style="color:#ffd700;font-weight:bold;">${{ "{:,.2f}".format(p.current_price) }}</td>
+            <td class="text-right" style="color:{% if p.total_return_pct > 0 %}#66bb6a{% else %}#ef5350{% endif %};">{{ "{:,.1f}".format(p.total_return_pct) }}%</td>
+            <td class="text-right" style="color:{% if p.annualized_roi_pct > 10 %}#66bb6a{% elif p.annualized_roi_pct > 0 %}#ffd700{% else %}#ef5350{% endif %};font-weight:bold;">{{ "{:,.1f}".format(p.annualized_roi_pct) }}%</td>
+            <td class="text-right" style="color:{% if beats_sp500 %}#66bb6a{% else %}#ef5350{% endif %};">
+                {% if beats_sp500 %}WIN{% else %}LOSE{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+const packData = {{ packs|tojson }};
+
+// Chart 1: Pack value by release year (log scale)
+createChart('packValueChart', 'scatter', {
+    datasets: [{
+        label: 'Current Pack Value',
+        data: packData.map(p => ({x: p.release_year, y: p.current_price, label: p.set_name})),
+        backgroundColor: CHART_COLORS.gold,
+        pointRadius: 6,
+        pointHoverRadius: 9,
+    }, {
+        label: '$4 MSRP',
+        data: packData.map(p => ({x: p.release_year, y: 4.0})),
+        type: 'line',
+        borderColor: CHART_COLORS.gray,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        borderWidth: 1,
+    }]
+}, {
+    plugins: {
+        title: { display: true, text: 'Sealed Booster Pack Value by Release Year', color: '#ffd700' },
+        tooltip: {
+            callbacks: {
+                label: (ctx) => {
+                    const d = ctx.raw;
+                    return `${d.label || ''}: $${d.y.toFixed(2)}`;
+                }
+            }
+        }
+    },
+    scales: {
+        x: { title: { display: true, text: 'Release Year', color: '#b0bec5' } },
+        y: {
+            type: 'logarithmic',
+            title: { display: true, text: 'Pack Value (USD, log scale)', color: '#b0bec5' },
+            ticks: {
+                color: '#b0bec5',
+                callback: (v) => '$' + v.toLocaleString(),
+            },
+        }
+    }
+});
+
+// Chart 2: Annualized ROI bar chart
+const sorted = [...packData].sort((a,b) => a.release_year - b.release_year);
+createChart('roiChart', 'bar', {
+    labels: sorted.map(p => p.set_name.length > 20 ? p.set_name.substring(0,18) + '..' : p.set_name),
+    datasets: [{
+        label: 'Annualized ROI %',
+        data: sorted.map(p => p.annualized_roi_pct),
+        backgroundColor: sorted.map(p => p.annualized_roi_pct > 10 ? CHART_COLORS.green : p.annualized_roi_pct > 0 ? CHART_COLORS.gold : CHART_COLORS.red),
+    }]
+}, {
+    plugins: {
+        title: { display: true, text: 'Annualized ROI % (green = beats S&P 500 at 10%/yr)', color: '#ffd700' },
+        legend: { display: false },
+        tooltip: {
+            callbacks: {
+                title: (items) => sorted[items[0].dataIndex].set_name,
+                label: (ctx) => {
+                    const p = sorted[ctx.dataIndex];
+                    return [`ROI: ${p.annualized_roi_pct}%/yr`, `Value: $${p.current_price}`, `Held: ${p.years_held}y`];
+                }
+            }
+        }
+    },
+    scales: {
+        x: { ticks: { color: '#b0bec5', maxRotation: 65, font: {size: 10} } },
+        y: {
+            title: { display: true, text: 'Annualized ROI %', color: '#b0bec5' },
+            grid: { color: '#1a2744' },
+        }
+    }
+});
+
+// Table filtering and sorting
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const era = document.getElementById('era-filter').value;
+    document.querySelectorAll('#pack-table tbody tr').forEach(row => {
+        let show = true;
+        if (search && !row.dataset.name.includes(search)) show = false;
+        if (era && row.dataset.era !== era) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#pack-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,%y]/g, '').replace(/,/g, '').replace('WIN','1').replace('LOSE','0');
+        let bV = b.children[col].textContent.trim().replace(/[$,%y]/g, '').replace(/,/g, '').replace('WIN','1').replace('LOSE','0');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

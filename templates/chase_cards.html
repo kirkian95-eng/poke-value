@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Chase Card Trends - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Chase Card Appreciation Tracker</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">The most valuable card in every set, tracked by release year. How do chase card values trend over time?</p>
+
+{% set priced_sets = sets|selectattr('top_1_price', 'gt', 0)|list %}
+{% set all_top1 = priced_sets|map(attribute='top_1_price')|list %}
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Sets with Prices</div>
+        <div class="value" style="color:#64b5f6;">{{ priced_sets|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Highest #1 Card</div>
+        <div class="value" style="color:#ffd700;">
+            {% if all_top1 %}${{ "{:,.2f}".format(all_top1|max) }}{% else %}-{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Avg #1 Card Value</div>
+        <div class="value" style="color:#66bb6a;">
+            {% if all_top1 %}${{ "{:,.2f}".format(all_top1|sum / all_top1|length) }}{% else %}-{% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="label">Median #1 Card</div>
+        <div class="value" style="color:#ce93d8;">
+            ${{ "{:,.2f}".format(median_top1) }}
+        </div>
+    </div>
+</div>
+
+<div style="height:450px;margin-bottom:2rem;">
+    <canvas id="chaseChart"></canvas>
+</div>
+
+<div style="height:380px;margin-bottom:2rem;">
+    <canvas id="avgChart"></canvas>
+</div>
+
+<div class="controls">
+    <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
+    <select id="era-filter" onchange="filterRows()">
+        <option value="">All Eras</option>
+        <option value="classic">Classic / WOTC</option>
+        <option value="neo">Neo</option>
+        <option value="ex">ex</option>
+        <option value="dp">Diamond & Pearl</option>
+        <option value="pl">Platinum</option>
+        <option value="hgss">HGSS</option>
+        <option value="bw">Black & White</option>
+        <option value="xy">XY</option>
+        <option value="sm">Sun & Moon</option>
+        <option value="swsh">Sword & Shield</option>
+        <option value="sv">Scarlet & Violet</option>
+    </select>
+</div>
+
+<table id="chase-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Set</th>
+            <th onclick="sortTable(1)">Era</th>
+            <th onclick="sortTable(2)" class="text-right">Year</th>
+            <th onclick="sortTable(3)">#1 Card</th>
+            <th onclick="sortTable(4)">Rarity</th>
+            <th onclick="sortTable(5)" class="text-right">#1 Price</th>
+            <th onclick="sortTable(6)" class="text-right">Top 3 Avg</th>
+            <th onclick="sortTable(7)" class="text-right">Top 10 Avg</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in sets %}
+        {% if s.top_1_price > 0 %}
+        <tr data-name="{{ s.set_name|lower }}" data-era="{{ s.era or '' }}">
+            <td><a href="{{ url_for('set_detail', set_id=s.set_id) }}" style="color:#64b5f6;">{{ s.set_name }}</a></td>
+            <td>{{ s.era or '?' }}</td>
+            <td class="text-right">{{ s.release_year }}</td>
+            <td style="color:#fff;">{{ s.top_1_card or '-' }}</td>
+            <td style="color:#78909c;">{{ s.top_1_rarity or '-' }}</td>
+            <td class="text-right" style="color:#ffd700;font-weight:bold;">${{ "{:,.2f}".format(s.top_1_price) }}</td>
+            <td class="text-right" style="color:#64b5f6;">${{ "{:,.2f}".format(s.top_3_avg) }}</td>
+            <td class="text-right" style="color:#66bb6a;">${{ "{:,.2f}".format(s.top_10_avg) }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+const chaseData = {{ sets|tojson }}.filter(s => s.top_1_price > 0);
+
+// Chart 1: Top card values scatter by year (3 series)
+createChart('chaseChart', 'scatter', {
+    datasets: [{
+        label: '#1 Card (Most Valuable)',
+        data: chaseData.map(s => ({x: s.release_year + (Math.random()-0.5)*0.3, y: s.top_1_price, label: s.set_name, card: s.top_1_card})),
+        backgroundColor: CHART_COLORS.gold,
+        pointRadius: 7,
+        pointHoverRadius: 10,
+    }, {
+        label: 'Top 3 Average',
+        data: chaseData.map(s => ({x: s.release_year + (Math.random()-0.5)*0.3, y: s.top_3_avg, label: s.set_name})),
+        backgroundColor: CHART_COLORS.blue,
+        pointRadius: 5,
+        pointHoverRadius: 8,
+    }, {
+        label: 'Top 10 Average',
+        data: chaseData.map(s => ({x: s.release_year + (Math.random()-0.5)*0.3, y: s.top_10_avg, label: s.set_name})),
+        backgroundColor: CHART_COLORS.green,
+        pointRadius: 4,
+        pointHoverRadius: 7,
+    }]
+}, {
+    plugins: {
+        title: { display: true, text: 'Chase Card Values by Release Year', color: '#ffd700' },
+        tooltip: {
+            callbacks: {
+                label: (ctx) => {
+                    const d = ctx.raw;
+                    const lines = [`${ctx.dataset.label}: $${d.y.toFixed(2)}`, d.label];
+                    if (d.card) lines.push(d.card);
+                    return lines;
+                }
+            }
+        }
+    },
+    scales: {
+        x: { title: { display: true, text: 'Release Year', color: '#b0bec5' } },
+        y: {
+            type: 'logarithmic',
+            title: { display: true, text: 'Price (USD, log scale)', color: '#b0bec5' },
+            ticks: { color: '#b0bec5', callback: (v) => '$' + v.toLocaleString() },
+        }
+    }
+});
+
+// Chart 2: Era averages bar chart
+const eras = {};
+chaseData.forEach(s => {
+    const era = s.era || 'unknown';
+    if (!eras[era]) eras[era] = {top1: [], top3: [], top10: [], label: era};
+    eras[era].top1.push(s.top_1_price);
+    eras[era].top3.push(s.top_3_avg);
+    eras[era].top10.push(s.top_10_avg);
+});
+const eraOrder = ['classic','neo','ex','dp','pl','hgss','bw','xy','sm','swsh','sv'];
+const sortedEras = eraOrder.filter(e => eras[e]).map(e => eras[e]);
+const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+
+createChart('avgChart', 'bar', {
+    labels: sortedEras.map(e => e.label.toUpperCase()),
+    datasets: [{
+        label: 'Avg #1 Card',
+        data: sortedEras.map(e => avg(e.top1).toFixed(2)),
+        backgroundColor: CHART_COLORS.gold,
+    }, {
+        label: 'Avg Top 3',
+        data: sortedEras.map(e => avg(e.top3).toFixed(2)),
+        backgroundColor: CHART_COLORS.blue,
+    }, {
+        label: 'Avg Top 10',
+        data: sortedEras.map(e => avg(e.top10).toFixed(2)),
+        backgroundColor: CHART_COLORS.green,
+    }]
+}, {
+    plugins: {
+        title: { display: true, text: 'Average Chase Card Value by Era', color: '#ffd700' },
+        tooltip: {
+            callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: $${parseFloat(ctx.raw).toFixed(2)}`
+            }
+        }
+    },
+    scales: {
+        y: {
+            title: { display: true, text: 'Avg Price (USD)', color: '#b0bec5' },
+            ticks: { color: '#b0bec5', callback: (v) => '$' + v.toLocaleString() },
+        }
+    }
+});
+
+// Table filtering and sorting
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const era = document.getElementById('era-filter').value;
+    document.querySelectorAll('#chase-table tbody tr').forEach(row => {
+        let show = true;
+        if (search && !row.dataset.name.includes(search)) show = false;
+        if (era && row.dataset.era !== era) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#chase-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,]/g, '').replace('-', '0');
+        let bV = b.children[col].textContent.trim().replace(/[$,]/g, '').replace('-', '0');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

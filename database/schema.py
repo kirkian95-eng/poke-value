@@ -118,10 +118,40 @@ CREATE TABLE IF NOT EXISTS sealed_products (
     FOREIGN KEY (set_id) REFERENCES sets(id)
 );
 
+CREATE TABLE IF NOT EXISTS psa_pop (
+    card_id TEXT NOT NULL,
+    psa_1 INTEGER DEFAULT 0,
+    psa_2 INTEGER DEFAULT 0,
+    psa_3 INTEGER DEFAULT 0,
+    psa_4 INTEGER DEFAULT 0,
+    psa_5 INTEGER DEFAULT 0,
+    psa_6 INTEGER DEFAULT 0,
+    psa_7 INTEGER DEFAULT 0,
+    psa_8 INTEGER DEFAULT 0,
+    psa_9 INTEGER DEFAULT 0,
+    psa_10 INTEGER DEFAULT 0,
+    total_graded INTEGER DEFAULT 0,
+    last_updated TEXT,
+    PRIMARY KEY (card_id),
+    FOREIGN KEY (card_id) REFERENCES cards(id)
+);
+
+CREATE TABLE IF NOT EXISTS graded_prices (
+    card_id TEXT NOT NULL,
+    grade TEXT NOT NULL,
+    market_price REAL,
+    price_source TEXT DEFAULT 'pricecharting',
+    last_updated TEXT,
+    PRIMARY KEY (card_id, grade),
+    FOREIGN KEY (card_id) REFERENCES cards(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_set_id ON cards(set_id);
 CREATE INDEX IF NOT EXISTS idx_cards_rarity ON cards(rarity);
 CREATE INDEX IF NOT EXISTS idx_prices_updated ON prices(last_updated);
 CREATE INDEX IF NOT EXISTS idx_sealed_set_id ON sealed_products(set_id);
+CREATE INDEX IF NOT EXISTS idx_psa_pop_total ON psa_pop(total_graded);
+CREATE INDEX IF NOT EXISTS idx_graded_prices_grade ON graded_prices(grade);
 """
 
 

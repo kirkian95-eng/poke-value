@@ -21,13 +21,15 @@
 ## Key files
 
 - `tasks.yaml` — roadmap tasks with subtasks, dependencies, priorities, and build order
-- `engine/ev_calculator.py` — core math engine
+- `engine/ev_calculator.py` — core math engine (EV, pack distribution)
 - `engine/pull_rates.py` — pull rate resolver
+- `engine/set_analysis.py` — set completion cost, rip-or-flip, cross-set analysis
 - `importers/price_updater.py` — multi-source price fetcher
 - `importers/tcgcsv_importer.py` — TCGCSV bulk price + sealed product importer
 - `database/schema.py` — schema + seed data
 - `update-pokemon-prices.py` — standalone daily cron script
 - `query_ev.py` — zero-dependency JSON query script
+- `static/charts.js` — Chart.js dark theme helper (`createChart()`, color palette)
 
 ## Development workflow
 

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Set Completion Costs - Pokemon TCG EV Calculator{% endblock %}
+{% block content %}
+<h1>Set Completion Costs</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">How much does it cost to buy every card in a set? Sorted by market price. Only sets with price data shown.</p>
+
+<div class="controls">
+    <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
+    <select id="era-filter" onchange="filterRows()">
+        <option value="">All Eras</option>
+        <option value="sv">Scarlet & Violet</option>
+        <option value="swsh">Sword & Shield</option>
+        <option value="sm">Sun & Moon</option>
+        <option value="xy">XY</option>
+        <option value="bw">Black & White</option>
+        <option value="classic">Classic</option>
+    </select>
+</div>
+
+<table id="completion-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Set</th>
+            <th onclick="sortTable(1)">Era</th>
+            <th onclick="sortTable(2)" class="text-right">Cards</th>
+            <th onclick="sortTable(3)" class="text-right">Priced</th>
+            <th onclick="sortTable(4)" class="text-right">Market Total</th>
+            <th onclick="sortTable(5)" class="text-right">Low Total</th>
+            <th onclick="sortTable(6)" class="text-right">Avg $/Card</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in sets %}
+        <tr data-name="{{ s.set_name|lower }}" data-era="{{ s.era or '' }}">
+            <td><a href="{{ url_for('set_detail', set_id=s.set_id) }}" style="color:#64b5f6;">{{ s.set_name }}</a></td>
+            <td>{{ s.era or '?' }}</td>
+            <td class="text-right">{{ s.total_cards }}</td>
+            <td class="text-right" style="{% if s.cards_missing > 0 %}color:#ffd700;{% else %}color:#66bb6a;{% endif %}">{{ s.cards_priced }}/{{ s.total_cards }}</td>
+            <td class="text-right" style="color:#ffd700;font-weight:bold;">${{ "{:,.2f}".format(s.total_market) }}</td>
+            <td class="text-right" style="color:#66bb6a;">${{ "{:,.2f}".format(s.total_low) }}</td>
+            <td class="text-right">{% if s.cards_priced > 0 %}${{ "%.2f"|format(s.total_market / s.cards_priced) }}{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const era = document.getElementById('era-filter').value;
+    document.querySelectorAll('#completion-table tbody tr').forEach(row => {
+        const name = row.dataset.name;
+        const rowEra = row.dataset.era;
+        let show = true;
+        if (search && !name.includes(search)) show = false;
+        if (era && rowEra !== era) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const table = document.getElementById('completion-table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('-', '0');
+        let bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('-', '0');
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return sortDir[col] ? aNum - bNum : bNum - aNum;
+        }
+        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Pack Distribution Comparison - poke-value{% endblock %}
+{% block content %}
+<h1>Pack Distribution Comparison</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Select 2-4 sets to overlay their pack value distributions. Helps answer: which set should I rip?</p>
+
+<div class="controls">
+    <select id="set-select" style="min-width:250px;">
+        <option value="">Add a set...</option>
+        {% for s in sets %}
+        <option value="{{ s.id }}">{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn btn-primary" onclick="addSet()">Add Set</button>
+    <button class="btn" onclick="clearAll()">Clear All</button>
+</div>
+
+<div id="selected-sets" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;"></div>
+
+<!-- Comparison Stats Table -->
+<div id="stats-table-wrap" style="display:none;margin-bottom:1.5rem;">
+    <h2>Comparison</h2>
+    <table id="stats-table">
+        <thead>
+            <tr>
+                <th>Set</th>
+                <th class="text-right">EV/Pack</th>
+                <th class="text-right">Median</th>
+                <th class="text-right">P(Beat MSRP)</th>
+                <th class="text-right">P(&ge;$10)</th>
+                <th class="text-right">P(&ge;$20)</th>
+                <th class="text-right">P(&ge;$50)</th>
+                <th class="text-right">P90</th>
+                <th class="text-right">P99</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Chart -->
+<div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:1rem 1.2rem;">
+    <h3 style="margin-bottom:0.8rem;">Overlaid Distributions</h3>
+    <div style="height:400px;">
+        <canvas id="compare-chart"></canvas>
+    </div>
+</div>
+
+<script>
+var selectedSets = [];
+var chart = null;
+var palette = CHART_PALETTE;
+
+function addSet() {
+    var sel = document.getElementById('set-select');
+    var id = sel.value;
+    var name = sel.options[sel.selectedIndex].text;
+    if (!id || selectedSets.length >= 4 || selectedSets.find(function(s) { return s.id === id; })) return;
+    selectedSets.push({ id: id, name: name });
+    sel.value = '';
+    updateUI();
+}
+
+function removeSet(id) {
+    selectedSets = selectedSets.filter(function(s) { return s.id !== id; });
+    updateUI();
+}
+
+function clearAll() {
+    selectedSets = [];
+    updateUI();
+}
+
+function updateUI() {
+    // Render selected set badges
+    var wrap = document.getElementById('selected-sets');
+    wrap.innerHTML = selectedSets.map(function(s, i) {
+        return '<span style="background:' + palette[i] + ';color:#1a1a2e;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:0.85rem;cursor:pointer;" onclick="removeSet(\'' + s.id + '\')">' + s.name + ' &times;</span>';
+    }).join('');
+
+    if (selectedSets.length < 2) {
+        document.getElementById('stats-table-wrap').style.display = 'none';
+        if (chart) { chart.destroy(); chart = null; }
+        return;
+    }
+
+    // Fetch distributions for all selected sets
+    Promise.all(selectedSets.map(function(s) {
+        return fetch('/api/set/' + s.id + '/distribution').then(function(r) { return r.json(); });
+    })).then(function(results) {
+        renderChart(results);
+        renderStatsTable(results);
+    });
+}
+
+function renderChart(results) {
+    if (chart) chart.destroy();
+
+    // Collect all unique bin labels across all sets
+    var allLabels = new Set();
+    results.forEach(function(r) {
+        if (r.histogram) r.histogram.forEach(function(b) { allLabels.add(b.label); });
+    });
+    var labels = Array.from(allLabels);
+
+    var datasets = results.map(function(r, i) {
+        var dataMap = {};
+        if (r.histogram) r.histogram.forEach(function(b) { dataMap[b.label] = b.probability; });
+        return {
+            label: selectedSets[i].name,
+            data: labels.map(function(l) { return dataMap[l] || 0; }),
+            backgroundColor: palette[i] + '80',
+            borderColor: palette[i],
+            borderWidth: 2,
+        };
+    });
+
+    chart = createChart('compare-chart', 'bar', {
+        labels: labels,
+        datasets: datasets,
+    }, {
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'; }
+                }
+            }
+        },
+        scales: {
+            y: {
+                title: { display: true, text: 'Probability %', color: '#78909c' },
+                ticks: { color: '#b0bec5' },
+                grid: { color: '#1a2744' },
+            },
+            x: {
+                ticks: { color: '#b0bec5', maxRotation: 45 },
+                grid: { display: false },
+            }
+        }
+    });
+}
+
+function renderStatsTable(results) {
+    var tbody = document.querySelector('#stats-table tbody');
+    tbody.innerHTML = results.map(function(r, i) {
+        var s = r.stats || {};
+        return '<tr>' +
+            '<td style="color:' + palette[i] + ';font-weight:bold;">' + selectedSets[i].name + '</td>' +
+            '<td class="text-right">$' + (s.base_value || 0).toFixed(2) + '</td>' +
+            '<td class="text-right">$' + (s.median || 0).toFixed(2) + '</td>' +
+            '<td class="text-right">' + (s.p_profit || 0) + '%</td>' +
+            '<td class="text-right">' + (s.p_10 || 0) + '%</td>' +
+            '<td class="text-right">' + (s.p_20 || 0) + '%</td>' +
+            '<td class="text-right">' + (s.p_50 || 0) + '%</td>' +
+            '<td class="text-right">$' + (s.p90 || 0).toFixed(2) + '</td>' +
+            '<td class="text-right">$' + (s.p99 || 0).toFixed(2) + '</td>' +
+            '</tr>';
+    }).join('');
+    document.getElementById('stats-table-wrap').style.display = '';
+}
+</script>
+{% endblock %}

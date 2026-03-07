@@ -5,12 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Pokemon TCG EV Calculator{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='charts.js') }}"></script>
 </head>
 <body>
     <nav>
-        <span class="brand">Pokemon TCG EV Calculator</span>
-        <a href="{{ url_for('index') }}">Sets</a>
-        <a href="{{ url_for('about') }}">About</a>
+        <a href="{{ url_for('dashboard') }}" class="brand">poke-value</a>
+        <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Menu">&#9776;</button>
+        <div class="nav-links">
+            <a href="{{ url_for('sets_list') }}">Sets</a>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle" onclick="return false;">Tools &#9662;</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('completion') }}">Completion Costs</a>
+                    <a href="{{ url_for('rip_or_flip_page') }}">Rip or Flip</a>
+                    <a href="{{ url_for('distributions') }}">Pack Distributions</a>
+                    <a href="{{ url_for('compare') }}">Rarity Comparison</a>
+                    <a href="{{ url_for('sealed_value') }}">Sealed Value</a>
+                    <a href="{{ url_for('arbitrage') }}">Arbitrage Finder</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle" onclick="return false;">Investing &#9662;</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('pack_investment') }}">Pack ROI</a>
+                    <a href="{{ url_for('chase_cards') }}">Chase Cards</a>
+                    <a href="{{ url_for('psa_pop') }}">PSA Pop Report</a>
+                    <a href="{{ url_for('grading') }}">Grading ROI</a>
+                </div>
+            </div>
+            <a href="{{ url_for('about') }}">About</a>
+        </div>
     </nav>
     <div class="container">
         {% block content %}{% endblock %}

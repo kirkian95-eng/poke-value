@@ -17,7 +17,7 @@ features:
     name: Set Completion Cost Calculator
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Sum market price of every card in a set. Show "Completing Prismatic
       Evolutions costs $X at market / $Y at low." 98% card price coverage
@@ -25,7 +25,7 @@ features:
     tasks:
       - id: scc-backend
         name: "Backend: compute set completion cost"
-        status: pending
+        status: done
         description: >
           New function in engine/ that queries all cards+prices for a set,
           sums tcg_market and tcg_low per card. Returns total_market,
@@ -35,7 +35,7 @@ features:
           - engine/set_analysis.py (new)
       - id: scc-api
         name: "API: /api/set/<id>/completion endpoint"
-        status: pending
+        status: done
         depends_on: [scc-backend]
         description: >
           Flask JSON endpoint returning completion cost data.
@@ -44,7 +44,7 @@ features:
           - app.py
       - id: scc-frontend-detail
         name: "Frontend: completion cost card on set detail page"
-        status: pending
+        status: done
         depends_on: [scc-api]
         description: >
           Add a "Set Completion Cost" section to set_detail.html below the
@@ -56,7 +56,7 @@ features:
           - static/style.css
       - id: scc-frontend-compare
         name: "Frontend: set completion comparison page"
-        status: pending
+        status: done
         depends_on: [scc-api]
         description: >
           New /completion route and template. Sortable table of all sets
@@ -68,7 +68,7 @@ features:
           - templates/base.html (add nav link)
       - id: scc-cli
         name: "CLI: completion-cost command"
-        status: pending
+        status: done
         depends_on: [scc-backend]
         description: >
           Add `python3 cli.py completion-cost --set <id>` command.
@@ -80,7 +80,7 @@ features:
     name: Rip-or-Flip Analysis
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Compare sealed product price vs EV of contents. "Prismatic Evolutions
       ETB: $193 sealed, 9 packs x $30.41 EV = $274 expected — rip it."
@@ -88,7 +88,7 @@ features:
     tasks:
       - id: rof-backend
         name: "Backend: rip-or-flip engine"
-        status: pending
+        status: done
         description: >
           New function that takes a sealed product, determines pack count
           (from product_type or name heuristics: ETB=8-9 packs, booster box=36,
@@ -100,7 +100,7 @@ features:
           - engine/set_analysis.py
       - id: rof-api
         name: "API: /api/set/<id>/rip-or-flip endpoint"
-        status: pending
+        status: done
         depends_on: [rof-backend]
         description: >
           Returns rip-or-flip analysis for all sealed products in a set.
@@ -109,7 +109,7 @@ features:
           - app.py
       - id: rof-frontend-detail
         name: "Frontend: rip-or-flip section on set detail page"
-        status: pending
+        status: done
         depends_on: [rof-api]
         description: >
           Add "Sealed Products — Rip or Flip?" section to set_detail.html.
@@ -121,7 +121,7 @@ features:
           - static/style.css
       - id: rof-frontend-page
         name: "Frontend: standalone rip-or-flip rankings page"
-        status: pending
+        status: done
         depends_on: [rof-api]
         description: >
           New /rip-or-flip route. Cross-set view: all sealed products ranked
@@ -136,14 +136,14 @@ features:
     name: Grading ROI Calculator
     tier: ready
     priority: 2
-    status: pending
+    status: done
     description: >
       Raw vs PSA 10 price spread minus grading fees and expected grade
       distribution. 596 cards already have ungraded/Grade 9/PSA 10 prices.
     tasks:
       - id: groi-backend
         name: "Backend: grading ROI calculator"
-        status: pending
+        status: done
         description: >
           New function that takes a card's graded_prices JSON, applies
           grading cost ($20-50 PSA depending on tier/speed), expected grade
@@ -155,7 +155,7 @@ features:
           - config.py (grading fee constants)
       - id: groi-api
         name: "API: /api/grading-roi/<card_id> and /api/set/<id>/grading-roi"
-        status: pending
+        status: done
         depends_on: [groi-backend]
         description: >
           Per-card and per-set grading ROI endpoints. Set endpoint returns
@@ -164,7 +164,7 @@ features:
           - app.py
       - id: groi-frontend-detail
         name: "Frontend: grading ROI section on set detail page"
-        status: pending
+        status: done
         depends_on: [groi-api]
         description: >
           Add "Top Grading Candidates" section to set_detail.html. Show
@@ -175,7 +175,7 @@ features:
           - templates/set_detail.html
       - id: groi-frontend-page
         name: "Frontend: grading ROI tool page"
-        status: pending
+        status: done
         depends_on: [groi-api]
         description: >
           New /grading route. Cross-set view of all 596+ cards with graded
@@ -191,14 +191,14 @@ features:
     name: Cross-Set Rarity Comparison
     tier: ready
     priority: 2
-    status: pending
+    status: done
     description: >
       Which set has the cheapest SIRs? Most expensive? Compare average
       prices by rarity across sets to help decide which sealed product to buy.
     tasks:
       - id: csr-backend
         name: "Backend: cross-set rarity stats"
-        status: pending
+        status: done
         description: >
           Query that groups cards by (set_id, rarity), computes avg/min/max
           price per rarity per set. Returns matrix of set x rarity with
@@ -207,7 +207,7 @@ features:
           - engine/set_analysis.py
       - id: csr-api
         name: "API: /api/rarity-comparison endpoint"
-        status: pending
+        status: done
         depends_on: [csr-backend]
         description: >
           JSON endpoint with optional rarity and era filters.
@@ -217,7 +217,7 @@ features:
           - app.py
       - id: csr-frontend
         name: "Frontend: rarity comparison page"
-        status: pending
+        status: done
         depends_on: [csr-api]
         description: >
           New /compare route. Heatmap-style table: rows=sets, columns=rarities,
@@ -234,14 +234,14 @@ features:
     name: Price-to-Rarity Scatter Plot
     tier: ready
     priority: 3
-    status: pending
+    status: done
     description: >
       Plot price vs rarity tier across sets. Find outlier commons worth
       more than ultra rares, or underpriced SIRs. Visualization-heavy.
     tasks:
       - id: prs-api
         name: "API: /api/set/<id>/scatter endpoint"
-        status: pending
+        status: done
         description: >
           Returns array of {card_name, number, rarity, price, rarity_rank}
           for scatter plot rendering. rarity_rank is numeric (Common=1,
@@ -250,7 +250,7 @@ features:
           - app.py
       - id: prs-frontend
         name: "Frontend: scatter plot on set detail page"
-        status: pending
+        status: done
         depends_on: [prs-api]
         description: >
           Add interactive scatter plot to set_detail.html using Chart.js.
@@ -266,7 +266,7 @@ features:
     name: Navigation & Layout Overhaul
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Current nav is minimal (Sets, About). As features grow, need proper
       navigation with dropdown menus or sidebar. Also need a dashboard
@@ -274,7 +274,7 @@ features:
     tasks:
       - id: nav-redesign
         name: "Frontend: responsive nav with feature links"
-        status: pending
+        status: done
         description: >
           Redesign nav bar to include: Sets, Tools (dropdown: Rip or Flip,
           Grading ROI, Rarity Compare), About. Mobile hamburger menu.
@@ -284,7 +284,7 @@ features:
           - static/style.css
       - id: nav-dashboard
         name: "Frontend: dashboard landing page"
-        status: pending
+        status: done
         description: >
           New / route (move set grid to /sets). Dashboard shows:
           quick stats (total sets, cards priced, avg EV), top 5 sets by EV,
@@ -302,7 +302,7 @@ features:
     name: Arbitrage Finder
     tier: medium
     priority: 2
-    status: pending
+    status: done
     description: >
       Compare TCGCSV (TCGPlayer) vs PriceCharting (eBay) prices for the
       same card. Flag meaningful spreads. Both sources already in DB for
@@ -310,7 +310,7 @@ features:
     tasks:
       - id: arb-backend
         name: "Backend: arbitrage detection"
-        status: pending
+        status: done
         description: >
           Query cards that have both tcg_market (TCGCSV) and graded_prices.ungraded
           (PriceCharting/eBay). Compute spread = |tcgplayer - ebay| and
@@ -320,7 +320,7 @@ features:
           - engine/set_analysis.py
       - id: arb-api
         name: "API: /api/arbitrage endpoint"
-        status: pending
+        status: done
         depends_on: [arb-backend]
         description: >
           JSON endpoint with optional set_id and min_spread filters.
@@ -329,7 +329,7 @@ features:
           - app.py
       - id: arb-frontend
         name: "Frontend: arbitrage page"
-        status: pending
+        status: done
         depends_on: [arb-api]
         description: >
           New /arbitrage route. Table: card name, set, TCGPlayer price,
@@ -659,7 +659,7 @@ features:
     name: Pack Value Distribution Tool
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Already computed in EV engine. Surface as a standalone tool with
       better visualization: probability of $10+, $50+, $100+ packs.
@@ -667,7 +667,7 @@ features:
     tasks:
       - id: pvt-api
         name: "API: /api/set/<id>/distribution endpoint"
-        status: pending
+        status: done
         description: >
           Expose existing calculate_pack_distribution() as JSON API.
           Already computed — just need the route.
@@ -675,7 +675,7 @@ features:
           - app.py
       - id: pvt-frontend
         name: "Frontend: enhanced distribution viz on set detail"
-        status: pending
+        status: done
         depends_on: [pvt-api]
         description: >
           Replace current HTML-bar histogram with Chart.js bar chart.
@@ -687,7 +687,7 @@ features:
           - static/style.css
       - id: pvt-compare
         name: "Frontend: multi-set distribution comparison page"
-        status: pending
+        status: done
         depends_on: [pvt-api]
         description: >
           New /distributions route. Select 2-4 sets, see overlaid
@@ -705,7 +705,7 @@ features:
     name: Chart.js Integration
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Add Chart.js CDN to base template. Create shared JS helper for
       consistent chart theming (dark background, gold/blue palette).
@@ -713,7 +713,7 @@ features:
     tasks:
       - id: cjs-base
         name: "Frontend: add Chart.js CDN and theme helper"
-        status: pending
+        status: done
         description: >
           Add Chart.js v4 CDN script to base.html. Create static/charts.js
           with helper function createChart(ctx, type, data, options) that
@@ -728,14 +728,14 @@ features:
     name: Set Analysis Engine Module
     tier: ready
     priority: 1
-    status: pending
+    status: done
     description: >
       Shared engine module for set completion cost, rip-or-flip, cross-set
       comparisons, and arbitrage. Multiple features depend on this.
     tasks:
       - id: sam-create
         name: "Backend: create engine/set_analysis.py"
-        status: pending
+        status: done
         description: >
           New module with functions: get_set_completion_cost(set_id),
           get_rip_or_flip(set_id), get_cross_set_rarity_stats(era, rarity),

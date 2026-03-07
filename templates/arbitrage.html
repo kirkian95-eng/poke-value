@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Arbitrage Finder - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>Arbitrage Finder</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Price gaps between TCGPlayer and PriceCharting (eBay) for the same card. Larger spreads may indicate buy/sell opportunities.</p>
+
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Opportunities Found</div>
+        <div class="value" style="color:#64b5f6;">{{ cards|length }}</div>
+    </div>
+    {% if cards %}
+    <div class="stat">
+        <div class="label">Largest Spread</div>
+        <div class="value" style="color:#66bb6a;">${{ "{:,.2f}".format(cards[0].spread) }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Avg Spread</div>
+        {% set avg_spread = cards|map(attribute='spread')|sum / cards|length %}
+        <div class="value" style="color:#ffd700;">${{ "{:,.2f}".format(avg_spread) }}</div>
+    </div>
+    {% endif %}
+    <div class="stat">
+        <div class="label">Min Spread Filter</div>
+        <div class="value" style="color:#b0bec5;">${{ "{:,.2f}".format(current_min_spread) }}</div>
+    </div>
+</div>
+
+<div class="controls">
+    <select id="set-filter" onchange="applyFilters()">
+        <option value="">All Sets</option>
+        {% for s in sets %}
+        <option value="{{ s.id }}" {% if current_set == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select id="spread-filter" onchange="applyFilters()">
+        <option value="0" {% if current_min_spread == 0 %}selected{% endif %}>Any Spread</option>
+        <option value="2" {% if current_min_spread == 2 %}selected{% endif %}>$2+ Spread</option>
+        <option value="5" {% if current_min_spread == 5 %}selected{% endif %}>$5+ Spread</option>
+        <option value="10" {% if current_min_spread == 10 %}selected{% endif %}>$10+ Spread</option>
+        <option value="50" {% if current_min_spread == 50 %}selected{% endif %}>$50+ Spread</option>
+    </select>
+    <input type="text" id="search" placeholder="Search cards..." oninput="filterRows()">
+</div>
+
+<table id="arb-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Card</th>
+            <th onclick="sortTable(1)">Set</th>
+            <th onclick="sortTable(2)">Rarity</th>
+            <th onclick="sortTable(3)" class="text-right">TCGPlayer $</th>
+            <th onclick="sortTable(4)" class="text-right">PriceCharting $</th>
+            <th onclick="sortTable(5)" class="text-right">Spread</th>
+            <th onclick="sortTable(6)" class="text-right">Spread %</th>
+            <th>Direction</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in cards %}
+        <tr data-name="{{ c.card_name|lower }} {{ c.set_name|lower }}">
+            <td>
+                <span style="color:#fff;">{{ c.card_name }}</span>
+                <span style="color:#546e7a;font-size:0.8em;"> #{{ c.card_number }}</span>
+            </td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.set_name }}</td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.rarity or '-' }}</td>
+            <td class="text-right">${{ "{:,.2f}".format(c.tcgplayer_price) }}</td>
+            <td class="text-right">${{ "{:,.2f}".format(c.pricecharting_price) }}</td>
+            <td class="text-right" style="color:{% if c.spread > 50 %}#66bb6a{% elif c.spread > 10 %}#ffd700{% else %}#64b5f6{% endif %};font-weight:bold;">${{ "{:,.2f}".format(c.spread) }}</td>
+            <td class="text-right" style="color:{% if c.spread_pct > 50 %}#66bb6a{% elif c.spread_pct > 20 %}#ffd700{% else %}#64b5f6{% endif %};">{{ "{:,.1f}".format(c.spread_pct) }}%</td>
+            <td style="font-size:0.85em;color:#b0bec5;">{{ c.direction }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not cards %}
+<p style="color:#78909c;">No arbitrage opportunities found{% if current_min_spread > 0 %} above ${{ "{:,.2f}".format(current_min_spread) }} spread{% endif %}. Import PriceCharting prices with: <code>python3 cli.py import-psa-pop --set &lt;id&gt; --prices</code></p>
+{% endif %}
+
+<p style="color:#546e7a;font-size:0.8em;margin-top:1rem;">
+    TCGPlayer prices from TCGCSV (market value). PriceCharting prices reflect eBay sold listings.
+    Spread = |TCGPlayer - PriceCharting|. Factor in shipping, fees (13% eBay, 12% TCGPlayer), and condition when evaluating.
+    Currently {{ cards|length }} cards have both TCGPlayer and PriceCharting ungraded prices.
+</p>
+
+<script>
+function applyFilters() {
+    const set = document.getElementById('set-filter').value;
+    const spread = document.getElementById('spread-filter').value;
+    let url = '/arbitrage?min_spread=' + spread;
+    if (set) url += '&set=' + set;
+    window.location.href = url;
+}
+
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('#arb-table tbody tr').forEach(row => {
+        row.style.display = !search || row.dataset.name.includes(search) ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#arb-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
+        let bV = b.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+</script>
+{% endblock %}

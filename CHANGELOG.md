@@ -4,6 +4,118 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-07 — Sealed Value Breakdown (Expanded)
+
+### Added
+
+**Sealed Value Tool — Full Auto-Detection** (feature: `sealed-value`)
+- Expanded from 7 manually-mapped products to 159 auto-detected products (45 booster boxes, 108 ETBs, 6 UPCs)
+- `_detect_pack_count()` auto-assigns pack counts: booster_box=36, enhanced=30, ETB=8-9 (era-dependent), UPC=16
+- `_SEALED_SKIP` regex filters code cards, cases, displays, bulk, samples
+- `PRODUCT_PROMOS` dict maps known promo card IDs to sealed products (151 UPC, Alakazam/Zapdos collections, etc.)
+- `/sealed-value` route with type filter (box/etb/upc), set filter, text search
+- Expandable detail rows showing pack math, individual promo prices, EV calculations
+- Deduplication handles products mapped to multiple set IDs (e.g., 151 in sv1 + sv3pt5)
+- Skips mini-tins (2 packs) and blisters (1-3 packs) per user request
+
+---
+
+## 2026-03-07 — Phase 2: Analysis Tools
+
+### Added
+
+**Cross-Set Rarity Comparison** (feature: `cross-set-rarity`)
+- `get_cross_set_rarity_stats()` in `engine/set_analysis.py` — GROUP BY set + rarity, returns avg/min/max/total prices
+- `/compare` route with rarity dropdown (36 rarity types), era filter, bar chart (color-coded cheap→expensive)
+- Answers "Which set has the cheapest SIRs?" — Scarlet & Violet base at $16.29 avg, Ascended Heroes at $188.41
+- API: `GET /api/rarity-comparison?rarity=Special+Illustration+Rare&era=sv`
+
+**Grading ROI Calculator** (feature: `grading-roi`)
+- `get_grading_roi_candidates()` in `engine/set_analysis.py` — expected graded value using grade distribution (15% PSA 10, 40% PSA 9, 25% PSA 8, etc.)
+- Configurable grading fee ($20/$50/$100/$150) recalculates live via JS — no page reload
+- `/grading` route with fee selector, set filter, sortable table
+- Columns: raw price, expected graded value, expected profit, ROI %, PSA 10 price/premium
+- API: `GET /api/grading-roi?fee=20`
+- Key finding: Base Set Charizard grading ROI = 774% at $20 economy tier
+
+**Arbitrage Finder** (feature: `arbitrage-finder`)
+- `get_arbitrage_opportunities()` in `engine/set_analysis.py` — compares TCGPlayer (TCGCSV) vs PriceCharting (eBay) ungraded prices
+- `/arbitrage` route with min spread filter, direction indicator
+- 20 cards with both price sources; Charizard shows $205 spread between platforms
+- API: `GET /api/arbitrage?min_spread=2`
+
+**Price-to-Rarity Scatter Plot** (feature: `price-rarity-scatter`)
+- `get_rarity_scatter_data()` in `engine/set_analysis.py` with `RARITY_RANK` mapping (38 rarities → 9 tiers)
+- Chart.js scatter plot on every set detail page — X=price (log), Y=rarity tier
+- Color-coded by rarity tier, hover shows card name + rarity + price
+- Outliers (expensive commons, cheap ultra rares) visible at a glance
+- API: `GET /api/set/<id>/scatter`
+
+**Navigation**
+- Added "Rarity Comparison" and "Arbitrage Finder" to Tools dropdown
+- Added "Grading ROI" to Investing dropdown
+
+### Technical Decisions
+- Grade distribution (15/40/25/10/5/3/2) is community consensus, not official PSA data
+- Arbitrage currently limited to 20 cards with both TCGPlayer + PriceCharting prices
+- Rarity rank mapping covers all 38 observed rarity types across all eras
+
+---
+
+## 2026-03-07 — Investment Research Tools: Pack ROI, Chase Cards, PSA Pop
+
+### Added
+
+**All-Era Price Backfill**
+- Ran `bulk-prices --all` to populate card prices + sealed products for all 171 sets across every era (1999-2026)
+- 19,694 cards priced, 1,780 sealed products (was: only 16 SV-era sets)
+
+**Pack Investment ROI Tracker** (Tool A)
+- `get_pack_investment_data()` in `engine/set_analysis.py` — calculates annualized ROI for sealed booster packs vs $4 MSRP
+- Smart pack filtering: identifies single loose unlimited booster pack per set, excludes sleeved/bundle/1st edition/code cards
+- `/investment/packs` route with two Chart.js visualizations:
+  - Scatter: pack value by release year (log scale)
+  - Bar: annualized ROI % with S&P 500 benchmark (10%/yr)
+- Sortable table with era/search filters, "WIN/LOSE vs S&P" column
+- API: `GET /api/investment/packs`
+- Key finding: Base Set packs = 20.6%/yr over 27 years, beating S&P 500
+
+**Chase Card Appreciation Tracker** (Tool B)
+- `get_chase_card_trends()` in `engine/set_analysis.py` — top 1/3/10 most valuable card per set by release year
+- `/investment/chase-cards` route with:
+  - Scatter: #1, top 3 avg, top 10 avg values by year (log scale, 3 series)
+  - Bar: average chase card value by era
+- Sortable table of all 165 sets with prices
+- API: `GET /api/investment/chase-cards`
+- Key finding: Base Set Charizard $525, Prismatic Umbreon $1,104
+
+**PSA Pop Report Pricing Tool** (Tool C)
+- New DB tables: `psa_pop` (PSA grade 1-10 populations) and `graded_prices` (per-grade market prices)
+- `importers/pricecharting_scraper.py` — scrapes PriceCharting.com for:
+  - Set-level pop reports (1 request per set, grade 6-10 + total)
+  - Per-card detail pages (full 1-10 pop + prices per grade)
+- `get_psa_analysis()` in `engine/set_analysis.py` with metrics:
+  - Pop-adjusted value score = price / ln(pop + 1) (lower = potentially undervalued)
+  - Grade premium = graded price / raw price
+  - Grading ROI = (graded - raw - $20 fee) / (raw + fee)
+- `/psa` route with:
+  - Scatter: PSA 10 population vs price (log-log, color-coded by pop-score)
+  - Sortable table: pop counts, raw price, graded price, premium, ROI
+  - Filters: set, grade level (7/8/9/10), sort metric
+- CLI: `python3 cli.py import-psa-pop --set <id|all> [--prices]`
+- API: `GET /api/psa/cards`
+- Seeded 681 cards with pop data (20 sets), 20 cards with full graded prices
+
+**Navigation**
+- Added "Investing" dropdown to nav bar: Pack ROI, Chase Cards, PSA Pop Report
+
+### Technical Decisions
+- PriceCharting chosen over PSA direct (Cloudflare blocks requests) — has BOTH pop data AND graded prices
+- Set-level pop scrape is bulk (1 req/set); per-card detail is slow (1 req/card + rate limit)
+- Flat $4 MSRP assumed for all packs (actual varied $3.29-$4.49 across eras)
+
+---
+
 ## 2026-03-03 — Replace reverse holo price assumption with real data
 
 ### Fixed

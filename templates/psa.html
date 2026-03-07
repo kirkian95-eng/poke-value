@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}PSA Pop Report - Pokemon TCG{% endblock %}
+{% block content %}
+<h1>PSA Pop Report & Grading Analysis</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Find undervalued PSA-graded cards. Low population + low price relative to similar cards = potential opportunity. Cards with graded prices show full analysis.</p>
+
+{% set with_prices = cards|selectattr('graded_price')|list %}
+<div class="ev-summary">
+    <div class="stat">
+        <div class="label">Cards with Pop Data</div>
+        <div class="value" style="color:#64b5f6;">{{ cards|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">With Graded Prices</div>
+        <div class="value" style="color:#ffd700;">{{ with_prices|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Sets Covered</div>
+        <div class="value" style="color:#66bb6a;">{{ sets_with_pop|length }}</div>
+    </div>
+    <div class="stat">
+        <div class="label">Grading Fee (PSA Economy)</div>
+        <div class="value" style="color:#b0bec5;">$20</div>
+    </div>
+</div>
+
+{% if with_prices|length > 5 %}
+<div style="height:420px;margin-bottom:2rem;">
+    <canvas id="popScatter"></canvas>
+</div>
+{% endif %}
+
+<div class="controls">
+    <select id="set-filter" onchange="applyFilters()">
+        <option value="">All Sets</option>
+        {% for s in sets_with_pop %}
+        <option value="{{ s.id }}" {% if current_set == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select id="grade-filter" onchange="applyFilters()">
+        <option value="10" {% if current_grade == '10' %}selected{% endif %}>PSA 10</option>
+        <option value="9" {% if current_grade == '9' %}selected{% endif %}>PSA 9</option>
+        <option value="8" {% if current_grade == '8' %}selected{% endif %}>PSA 8</option>
+        <option value="7" {% if current_grade == '7' %}selected{% endif %}>PSA 7</option>
+    </select>
+    <select id="sort-filter" onchange="applyFilters()">
+        <option value="pop_score" {% if current_sort == 'pop_score' %}selected{% endif %}>Pop-Adjusted Value (undervalued first)</option>
+        <option value="pop" {% if current_sort == 'pop' %}selected{% endif %}>Population (rarest first)</option>
+        <option value="graded_price" {% if current_sort == 'graded_price' %}selected{% endif %}>Graded Price (highest first)</option>
+        <option value="grade_premium" {% if current_sort == 'grade_premium' %}selected{% endif %}>Grade Premium (highest first)</option>
+        <option value="grading_roi" {% if current_sort == 'grading_roi' %}selected{% endif %}>Grading ROI % (best first)</option>
+    </select>
+    <input type="text" id="search" placeholder="Search cards..." oninput="filterRows()">
+</div>
+
+<table id="psa-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Card</th>
+            <th onclick="sortTable(1)">Set</th>
+            <th onclick="sortTable(2)">Rarity</th>
+            <th onclick="sortTable(3)" class="text-right">PSA 10 Pop</th>
+            <th onclick="sortTable(4)" class="text-right">PSA 9 Pop</th>
+            <th onclick="sortTable(5)" class="text-right">Total Graded</th>
+            <th onclick="sortTable(6)" class="text-right">Raw Price</th>
+            <th onclick="sortTable(7)" class="text-right">Graded Price</th>
+            <th onclick="sortTable(8)" class="text-right">Premium</th>
+            <th onclick="sortTable(9)" class="text-right">Grading ROI</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in cards %}
+        <tr data-name="{{ c.card_name|lower }} {{ c.set_name|lower }}">
+            <td>
+                <span style="color:#fff;">{{ c.card_name }}</span>
+                <span style="color:#546e7a;font-size:0.8em;"> #{{ c.card_number }}</span>
+            </td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.set_name }}</td>
+            <td style="color:#78909c;font-size:0.85em;">{{ c.rarity or '-' }}</td>
+            <td class="text-right" style="color:{% if c.psa_10 <= 10 %}#ef5350{% elif c.psa_10 <= 100 %}#ffd700{% else %}#b0bec5{% endif %};font-weight:{% if c.psa_10 <= 10 %}bold{% else %}normal{% endif %};">{{ "{:,}".format(c.psa_10) }}</td>
+            <td class="text-right">{{ "{:,}".format(c.psa_9) }}</td>
+            <td class="text-right">{{ "{:,}".format(c.total_graded) }}</td>
+            <td class="text-right">{% if c.raw_price %}${{ "{:,.2f}".format(c.raw_price) }}{% else %}-{% endif %}</td>
+            <td class="text-right" style="color:#ffd700;font-weight:bold;">{% if c.graded_price %}${{ "{:,.2f}".format(c.graded_price) }}{% else %}-{% endif %}</td>
+            <td class="text-right" style="color:{% if c.grade_premium and c.grade_premium > 10 %}#66bb6a{% elif c.grade_premium %}#64b5f6{% else %}#546e7a{% endif %};">{% if c.grade_premium %}{{ c.grade_premium }}x{% else %}-{% endif %}</td>
+            <td class="text-right" style="color:{% if c.grading_roi and c.grading_roi > 100 %}#66bb6a{% elif c.grading_roi and c.grading_roi > 0 %}#ffd700{% elif c.grading_roi %}#ef5350{% else %}#546e7a{% endif %};font-weight:{% if c.grading_roi and c.grading_roi > 100 %}bold{% else %}normal{% endif %};">{% if c.grading_roi is not none %}{{ "{:,.1f}".format(c.grading_roi) }}%{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p style="color:#546e7a;font-size:0.8em;margin-top:1rem;">
+    Pop data from PriceCharting.com (PSA + CGC combined). Updated monthly.
+    Grade Premium = Graded Price / Raw Price.
+    Grading ROI = (Graded - Raw - $20 fee) / (Raw + $20 fee).
+    Pop Score = Price / ln(Pop + 1) — lower values may indicate undervalued cards relative to their scarcity.
+</p>
+
+<script>
+function applyFilters() {
+    const set = document.getElementById('set-filter').value;
+    const grade = document.getElementById('grade-filter').value;
+    const sort = document.getElementById('sort-filter').value;
+    let url = '/psa?sort=' + sort + '&grade=' + grade;
+    if (set) url += '&set=' + set;
+    window.location.href = url;
+}
+
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('#psa-table tbody tr').forEach(row => {
+        row.style.display = !search || row.dataset.name.includes(search) ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const tbody = document.querySelector('#psa-table tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aV = a.children[col].textContent.trim().replace(/[$,%x]/g, '').replace(/,/g, '').replace('-', '-999999');
+        let bV = b.children[col].textContent.trim().replace(/[$,%x]/g, '').replace(/,/g, '').replace('-', '-999999');
+        const aN = parseFloat(aV), bN = parseFloat(bV);
+        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
+        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// Scatter chart: PSA 10 Pop vs Graded Price
+{% if with_prices|length > 5 %}
+const psaData = {{ cards|tojson }}.filter(c => c.graded_price && c.pop > 0);
+if (psaData.length > 0) {
+    createChart('popScatter', 'scatter', {
+        datasets: [{
+            label: 'PSA {{ current_grade }} Cards',
+            data: psaData.map(c => ({
+                x: c.pop,
+                y: c.graded_price,
+                label: c.card_name,
+                set: c.set_name,
+            })),
+            backgroundColor: psaData.map(c => {
+                if (c.pop_score && c.pop_score < 500) return CHART_COLORS.green;
+                if (c.pop_score && c.pop_score < 2000) return CHART_COLORS.gold;
+                return CHART_COLORS.blue;
+            }),
+            pointRadius: 6,
+            pointHoverRadius: 9,
+        }]
+    }, {
+        plugins: {
+            title: { display: true, text: 'PSA {{ current_grade }} Population vs Price (green = low pop-score / potentially undervalued)', color: '#ffd700' },
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: (ctx) => {
+                        const d = ctx.raw;
+                        return [`${d.label} (${d.set})`, `Pop: ${d.x.toLocaleString()}`, `Price: $${d.y.toLocaleString()}`];
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                type: 'logarithmic',
+                title: { display: true, text: 'PSA {{ current_grade }} Population (log scale)', color: '#b0bec5' },
+                ticks: { color: '#b0bec5', callback: (v) => v.toLocaleString() },
+            },
+            y: {
+                type: 'logarithmic',
+                title: { display: true, text: 'Graded Price (USD, log scale)', color: '#b0bec5' },
+                ticks: { color: '#b0bec5', callback: (v) => '$' + v.toLocaleString() },
+            }
+        }
+    });
+}
+{% endif %}
+</script>
+{% endblock %}

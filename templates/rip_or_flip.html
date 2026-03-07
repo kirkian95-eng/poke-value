@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Rip or Flip - Pokemon TCG EV Calculator{% endblock %}
+{% block content %}
+<h1>Rip or Flip Rankings</h1>
+<p style="color:#78909c;margin-bottom:1.5rem;">Should you open it or sell it sealed? All products ranked by margin (EV of contents minus sealed price). Best deals at the top.</p>
+
+<div class="controls">
+    <input type="text" id="search" placeholder="Search products..." oninput="filterRows()">
+    <select id="era-filter" onchange="filterRows()">
+        <option value="">All Eras</option>
+        <option value="sv">Scarlet & Violet</option>
+        <option value="swsh">Sword & Shield</option>
+        <option value="sm">Sun & Moon</option>
+    </select>
+    <select id="type-filter" onchange="filterRows()">
+        <option value="">All Types</option>
+        <option value="booster_box">Booster Box</option>
+        <option value="elite_trainer_box">ETB</option>
+        <option value="booster_bundle">Bundle</option>
+        <option value="tin">Tin</option>
+        <option value="collection_box">Collection</option>
+    </select>
+    <select id="verdict-filter" onchange="filterRows()">
+        <option value="">All Verdicts</option>
+        <option value="rip">Rip Only</option>
+        <option value="flip">Flip Only</option>
+        <option value="even">Even Only</option>
+    </select>
+</div>
+
+<table id="rof-table">
+    <thead>
+        <tr>
+            <th onclick="sortTable(0)">Product</th>
+            <th onclick="sortTable(1)">Set</th>
+            <th onclick="sortTable(2)" class="text-right">Sealed $</th>
+            <th onclick="sortTable(3)" class="text-right">Packs</th>
+            <th onclick="sortTable(4)" class="text-right">EV Contents</th>
+            <th onclick="sortTable(5)" class="text-right">Margin</th>
+            <th onclick="sortTable(6)" class="text-right">Margin %</th>
+            <th>Verdict</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in products %}
+        <tr data-name="{{ p.name|lower }}" data-era="{{ p.era or '' }}" data-type="{{ p.product_type or '' }}" data-verdict="{{ p.verdict }}">
+            <td>{{ p.name[:45] }}</td>
+            <td><a href="{{ url_for('set_detail', set_id=p.set_id) }}" style="color:#64b5f6;">{{ p.set_name }}</a></td>
+            <td class="text-right">${{ "{:,.2f}".format(p.tcg_market) }}</td>
+            <td class="text-right">{{ p.pack_count or '?' }}</td>
+            <td class="text-right">${{ "{:,.2f}".format(p.ev_contents) }}</td>
+            <td class="text-right" style="{% if p.margin > 0 %}color:#66bb6a;{% elif p.margin < 0 %}color:#ef5350;{% endif %}font-weight:bold;">{{ "%+.2f"|format(p.margin) }}</td>
+            <td class="text-right" style="{% if p.margin_pct > 0 %}color:#66bb6a;{% elif p.margin_pct < 0 %}color:#ef5350;{% endif %}">{{ "%+.1f"|format(p.margin_pct) }}%</td>
+            <td>
+                {% if p.verdict == 'rip' %}
+                <span style="background:#66bb6a;color:#1a1a2e;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">RIP</span>
+                {% elif p.verdict == 'flip' %}
+                <span style="background:#ef5350;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">FLIP</span>
+                {% elif p.verdict == 'even' %}
+                <span style="background:#ffd700;color:#1a1a2e;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.85rem;">EVEN</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+function filterRows() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const era = document.getElementById('era-filter').value;
+    const type = document.getElementById('type-filter').value;
+    const verdict = document.getElementById('verdict-filter').value;
+    document.querySelectorAll('#rof-table tbody tr').forEach(row => {
+        const name = row.dataset.name;
+        const rowEra = row.dataset.era;
+        const rowType = row.dataset.type;
+        const rowVerdict = row.dataset.verdict;
+        let show = true;
+        if (search && !name.includes(search)) show = false;
+        if (era && rowEra !== era) show = false;
+        if (type && rowType !== type) show = false;
+        if (verdict && rowVerdict !== verdict) show = false;
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+let sortDir = {};
+function sortTable(col) {
+    const table = document.getElementById('rof-table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+    rows.sort((a, b) => {
+        let aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '').replace('-', () => '');
+        let bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '').replace('-', () => '');
+        // Re-extract for proper negative handling
+        aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '');
+        bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '');
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return sortDir[col] ? aNum - bNum : bNum - aNum;
+        }
+        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}
