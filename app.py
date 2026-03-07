@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, url_for
 from database.connection import get_db
 from database.schema import init_db
 from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution, calculate_graded_ev

@@ -32,6 +32,9 @@ from config import EUR_TO_USD
 from database.connection import get_db
 from engine.pull_rates import get_set_pull_rates, get_god_pack_data
 
+# Rarities eligible for reverse holo slot
+REVERSE_HOLO_POOL = ("Common", "Uncommon", "Rare", "Rare Holo")
+
 
 def _get_price(card):
     """Get the best available USD price for a card (normal/holofoil print)."""
@@ -99,7 +102,7 @@ def calculate_set_ev(set_id):
         if slot_type == "reverse_holo":
             # Reverse holos drawn from common+uncommon+rare pool
             reverse_cards = []
-            for r in ("Common", "Uncommon", "Rare", "Rare Holo"):
+            for r in REVERSE_HOLO_POOL:
                 reverse_cards.extend(by_rarity.get(r, []))
             n_rev = len(reverse_cards)
             if n_rev == 0:
@@ -227,13 +230,14 @@ def _cache_ev(set_id, result):
         if pack_row and pack_row[0]:
             pack_price = pack_row[0]
         else:
-            # Only use $4.49 MSRP for modern sets still in print
+            # Only use default MSRP for modern sets still in print
+            from config import DEFAULT_PACK_MSRP
             era = conn.execute(
                 "SELECT era FROM sets WHERE id = ?", (set_id,)
             ).fetchone()
             era_val = era["era"] if era else ""
             if era_val in ("sv", "mega"):
-                pack_price = 4.49
+                pack_price = DEFAULT_PACK_MSRP
             else:
                 pack_price = None
 
@@ -303,7 +307,7 @@ def calculate_pack_distribution(set_id):
 
         if slot_type == "reverse_holo":
             reverse_cards = []
-            for r in ("Common", "Uncommon", "Rare", "Rare Holo"):
+            for r in REVERSE_HOLO_POOL:
                 reverse_cards.extend(by_rarity.get(r, []))
             n_rev = len(reverse_cards)
             if n_rev == 0:
@@ -591,7 +595,7 @@ def calculate_graded_ev(set_id, grading_fee=20.0):
 
         if slot_type == "reverse_holo":
             reverse_cards = []
-            for r in ("Common", "Uncommon", "Rare", "Rare Holo"):
+            for r in REVERSE_HOLO_POOL:
                 reverse_cards.extend(by_rarity.get(r, []))
             n_rev = len(reverse_cards)
             if n_rev == 0:
@@ -667,63 +671,3 @@ def calculate_graded_ev(set_id, grading_fee=20.0):
     }
 
 
-def get_card_ev_details(set_id):
-    """Get per-card EV contribution details for display."""
-    pull_rates = get_set_pull_rates(set_id)
-
-    with get_db() as conn:
-        rows = conn.execute("""
-            SELECT c.id, c.name, c.number, c.rarity, c.supertype,
-                   p.tcg_market, p.tcg_reverse_holo, p.cm_avg, p.cm_trend
-            FROM cards c
-            LEFT JOIN prices p ON c.id = p.card_id
-            WHERE c.set_id = ?
-            ORDER BY CAST(c.number AS INTEGER)
-        """, (set_id,)).fetchall()
-
-    cards = [dict(r) for r in rows]
-
-    # Build rarity count map
-    rarity_counts = {}
-    for card in cards:
-        r = card.get("rarity") or "Unknown"
-        rarity_counts[r] = rarity_counts.get(r, 0) + 1
-
-    # Build rarity -> probability map from pull rates
-    rarity_prob = {}
-    for rate in pull_rates:
-        if rate["slot_type"] == "guaranteed":
-            rarity_prob[rate["rarity"]] = ("guaranteed", rate["guaranteed_count"])
-        elif rate["slot_type"] == "hit_slot":
-            rarity_prob[rate["rarity"]] = ("hit_slot", rate["probability_per_pack"])
-
-    # Calculate per-card EV
-    result = []
-    for card in cards:
-        price = _get_price(card)
-        rarity = card.get("rarity") or "Unknown"
-        n_of_rarity = rarity_counts.get(rarity, 1)
-
-        prob_info = rarity_prob.get(rarity)
-        if prob_info:
-            mode, val = prob_info
-            if mode == "guaranteed":
-                p_card = val / n_of_rarity
-            else:
-                p_card = val / n_of_rarity
-        else:
-            p_card = 0.0
-
-        ev_contribution = p_card * price
-
-        result.append({
-            "id": card["id"],
-            "name": card["name"],
-            "number": card["number"],
-            "rarity": rarity,
-            "price": round(price, 2),
-            "probability": round(p_card, 6),
-            "ev_contribution": round(ev_contribution, 4),
-        })
-
-    return result

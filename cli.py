@@ -103,13 +103,14 @@ def main():
                 JOIN sets s ON c.set_id = s.id
                 ORDER BY s.release_date DESC
             """).fetchall()
+        from config import DEFAULT_PACK_MSRP
         print(f"\n{'Set Name':40s} | {'EV/Pack':>8s} | {'MSRP':>6s} | {'Ratio':>6s}")
         print("-" * 70)
         for row in sets_with_prices:
             try:
                 result = calculate_set_ev(row["set_id"])
-                ratio = result["ev_per_pack"] / 4.49 if result["ev_per_pack"] > 0 else 0
-                print(f"{row['name']:40s} | ${result['ev_per_pack']:>6.2f} | $4.49 | {ratio:>5.1%}")
+                ratio = result["ev_per_pack"] / DEFAULT_PACK_MSRP if result["ev_per_pack"] > 0 else 0
+                print(f"{row['name']:40s} | ${result['ev_per_pack']:>6.2f} | ${DEFAULT_PACK_MSRP:.2f} | {ratio:>5.1%}")
             except Exception as e:
                 print(f"{row['name']:40s} | ERROR: {e}")
 
@@ -173,8 +174,9 @@ def _print_ev_result(result):
     print(f"  {result['set_name']} ({result['set_id']})")
     print(f"{'=' * 60}")
     print(f"  EV per pack:      ${result['ev_per_pack']:.2f}")
-    print(f"  Pack MSRP:        $4.49")
-    ratio = result['ev_per_pack'] / 4.49 if result['ev_per_pack'] > 0 else 0
+    from config import DEFAULT_PACK_MSRP
+    print(f"  Pack MSRP:        ${DEFAULT_PACK_MSRP:.2f}")
+    ratio = result['ev_per_pack'] / DEFAULT_PACK_MSRP if result['ev_per_pack'] > 0 else 0
     print(f"  Value ratio:      {ratio:.1%}")
     print(f"  Cards with prices: {result['cards_with_prices']}/{result['total_cards']}")
     if result['god_pack_adjustment'] != 0:

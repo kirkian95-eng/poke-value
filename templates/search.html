@@ -143,7 +143,10 @@
     document.querySelectorAll('.card-thumb').forEach(img => {
         img.addEventListener('mouseenter', function(e) {
             const src = this.dataset.large || this.src;
-            preview.innerHTML = '<img src="' + src + '">';
+            preview.textContent = '';
+            var previewImg = document.createElement('img');
+            previewImg.src = src;
+            preview.appendChild(previewImg);
             preview.style.display = 'block';
         });
         img.addEventListener('mousemove', function(e) {

@@ -9,11 +9,9 @@ import sys
 import os
 from datetime import datetime, date
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import DEFAULT_PACK_MSRP
 from database.connection import get_db
 from engine.ev_calculator import calculate_set_ev
-
-# Flat MSRP assumption for pack investment ROI
-PACK_MSRP = 4.00
 
 # Skip these sealed products everywhere (cases, code cards, bulk, etc.)
 _SEALED_SKIP = re.compile(
@@ -298,7 +296,7 @@ def _pick_loose_pack(products):
 def get_pack_investment_data(era_filter=None, min_year=None):
     """Calculate investment ROI for sealed loose booster packs across all sets.
 
-    Assumes $4 MSRP cost basis. Returns list sorted by release_date.
+    Assumes DEFAULT_PACK_MSRP cost basis. Returns list sorted by release_date.
     """
     with get_db() as conn:
         query = """
@@ -360,9 +358,9 @@ def get_pack_investment_data(era_filter=None, min_year=None):
         years_held = days_held / 365.25
 
         current_price = pack["tcg_market"]
-        total_return = (current_price / PACK_MSRP) - 1
+        total_return = (current_price / DEFAULT_PACK_MSRP) - 1
         if years_held >= 1:
-            annualized_roi = (current_price / PACK_MSRP) ** (1 / years_held) - 1
+            annualized_roi = (current_price / DEFAULT_PACK_MSRP) ** (1 / years_held) - 1
         else:
             annualized_roi = total_return  # less than 1 year, just use total
 
@@ -375,7 +373,7 @@ def get_pack_investment_data(era_filter=None, min_year=None):
             "years_held": round(years_held, 1),
             "pack_name": pack["name"],
             "current_price": round(current_price, 2),
-            "cost_basis": PACK_MSRP,
+            "cost_basis": DEFAULT_PACK_MSRP,
             "total_return_pct": round(total_return * 100, 1),
             "annualized_roi_pct": round(annualized_roi * 100, 1),
         })
