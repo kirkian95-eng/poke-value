@@ -15,6 +15,12 @@ from engine.ev_calculator import calculate_set_ev
 # Flat MSRP assumption for pack investment ROI
 PACK_MSRP = 4.00
 
+# Skip these sealed products everywhere (cases, code cards, bulk, etc.)
+_SEALED_SKIP = re.compile(
+    r"code card|case|display|half|bulk|sample|set of \d",
+    re.IGNORECASE,
+)
+
 
 # Pack count mapping: product_type -> packs per product
 PACK_COUNTS = {
@@ -185,6 +191,9 @@ def get_rip_or_flip(set_id):
     results = []
     for p in products:
         product = dict(p)
+        name_lower = (product["name"] or "").lower()
+        if _SEALED_SKIP.search(name_lower):
+            continue
         sealed_price = product["tcg_market"] or 0
         pack_count = _estimate_pack_count(product["product_type"], product["name"])
 
@@ -448,6 +457,7 @@ def get_psa_analysis(set_id=None, sort_by="pop_score", grade="10",
     with get_db() as conn:
         query = """
             SELECT c.id, c.name, c.number, c.rarity, c.set_id,
+                   c.image_url_small,
                    s.name as set_name, s.era,
                    pop.psa_7, pop.psa_8, pop.psa_9, pop.psa_10, pop.total_graded,
                    p.tcg_market as raw_price
@@ -501,6 +511,7 @@ def get_psa_analysis(set_id=None, sort_by="pop_score", grade="10",
             "card_name": r["name"],
             "card_number": r["number"],
             "rarity": r["rarity"],
+            "image_url": r["image_url_small"],
             "set_id": r["set_id"],
             "set_name": r["set_name"],
             "era": r["era"],
@@ -555,11 +566,6 @@ PRODUCT_PROMOS = {
     "celebrations ultra-premium collection": [],
 }
 
-# Skip these substrings when scanning sealed products
-_SEALED_SKIP = re.compile(
-    r"code card|case|display|half|bulk|sample|set of \d",
-    re.IGNORECASE,
-)
 
 
 def _detect_pack_count(product_type, name, era):
@@ -806,6 +812,7 @@ def get_grading_roi_candidates(set_id=None, grading_fee=20.0, limit=500):
     with get_db() as conn:
         query = """
             SELECT DISTINCT c.id, c.name, c.number, c.rarity, c.set_id,
+                   c.image_url_small,
                    s.name as set_name, s.era,
                    p.tcg_market as raw_price
             FROM graded_prices gp
@@ -858,6 +865,7 @@ def get_grading_roi_candidates(set_id=None, grading_fee=20.0, limit=500):
             "card_name": c["name"],
             "card_number": c["number"],
             "rarity": c["rarity"],
+            "image_url": c["image_url_small"],
             "set_id": c["set_id"],
             "set_name": c["set_name"],
             "era": c["era"],
@@ -879,6 +887,7 @@ def get_arbitrage_opportunities(set_id=None, min_spread=2.0):
     with get_db() as conn:
         query = """
             SELECT c.id, c.name, c.number, c.rarity, c.set_id,
+                   c.image_url_small,
                    s.name as set_name, s.era,
                    p.tcg_market, p.tcg_low,
                    gp.market_price as pc_ungraded
@@ -911,6 +920,7 @@ def get_arbitrage_opportunities(set_id=None, min_spread=2.0):
             "card_name": r["name"],
             "card_number": r["number"],
             "rarity": r["rarity"],
+            "image_url": r["image_url_small"],
             "set_id": r["set_id"],
             "set_name": r["set_name"],
             "era": r["era"],
@@ -923,6 +933,87 @@ def get_arbitrage_opportunities(set_id=None, min_spread=2.0):
 
     results.sort(key=lambda x: -x["spread"])
     return results
+
+
+_SEALED_KEYWORDS = re.compile(
+    r"\b(box|etb|booster|sealed|tin|blister|collection|upc|elite trainer)\b",
+    re.IGNORECASE,
+)
+_SET_KEYWORDS = re.compile(
+    r"\b(set|expansion|series|era)\b",
+    re.IGNORECASE,
+)
+
+
+def global_search(query, limit=500):
+    """Search cards, sets, and sealed products. Returns dict with sections + intent."""
+    if not query or len(query.strip()) < 2:
+        return {"cards": [], "sets": [], "sealed": [], "intent": "cards", "query": query}
+
+    q = query.strip()
+    like = f"%{q}%"
+
+    with get_db() as conn:
+        # Cards
+        cards = conn.execute("""
+            SELECT c.id, c.name, c.number, c.rarity, c.set_id, c.image_url_small,
+                   s.name as set_name, s.release_date, s.era,
+                   p.tcg_market, p.tcg_low,
+                   pop.psa_10, pop.total_graded
+            FROM cards c
+            JOIN sets s ON c.set_id = s.id
+            LEFT JOIN prices p ON c.id = p.card_id
+            LEFT JOIN psa_pop pop ON c.id = pop.card_id
+            WHERE c.name LIKE ?
+            ORDER BY COALESCE(p.tcg_market, 0) DESC
+            LIMIT ?
+        """, (like, limit)).fetchall()
+
+        # Sets
+        sets = conn.execute("""
+            SELECT s.id, s.name, s.series, s.release_date, s.logo_url,
+                   s.total_cards, s.era,
+                   e.ev_per_pack
+            FROM sets s
+            LEFT JOIN ev_cache e ON s.id = e.set_id
+            WHERE s.name LIKE ? OR s.series LIKE ? OR s.id LIKE ?
+            ORDER BY s.release_date DESC
+        """, (like, like, like)).fetchall()
+
+        # Sealed products
+        sealed = conn.execute("""
+            SELECT sp.id, sp.name, sp.product_type, sp.set_id, sp.tcg_market,
+                   s.name as set_name, s.release_date
+            FROM sealed_products sp
+            JOIN sets s ON sp.set_id = s.id
+            WHERE sp.name LIKE ?
+            ORDER BY COALESCE(sp.tcg_market, 0) DESC
+            LIMIT ?
+        """, (like, limit)).fetchall()
+
+    # Intent detection
+    if _SET_KEYWORDS.search(q) and sets:
+        intent = "sets"
+    elif _SEALED_KEYWORDS.search(q):
+        intent = "sealed"
+    elif sets and not cards:
+        intent = "sets"
+    elif len(sets) > 0 and len(cards) == 0:
+        intent = "sets"
+    else:
+        intent = "cards"
+
+    # If query exactly matches a set name/id, boost sets
+    if any(q.lower() == s["name"].lower() or q.lower() == s["id"].lower() for s in sets):
+        intent = "sets"
+
+    return {
+        "cards": [dict(c) for c in cards],
+        "sets": [dict(s) for s in sets],
+        "sealed": [dict(s) for s in sealed],
+        "intent": intent,
+        "query": q,
+    }
 
 
 def get_rarity_scatter_data(set_id):

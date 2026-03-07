@@ -45,12 +45,12 @@ _SET_SLUG_OVERRIDES = {
     "ecard1": "pokemon-expedition",
     "ecard2": "pokemon-aquapolis",
     "ecard3": "pokemon-skyridge",
-    "ex1": "pokemon-ruby-sapphire",
+    "ex1": "pokemon-ruby-&-sapphire",
     "ex2": "pokemon-sandstorm",
     "ex3": "pokemon-dragon",
-    "ex4": "pokemon-team-magma-vs-team-aqua",
+    "ex4": "pokemon-team-magma-&-team-aqua",
     "ex5": "pokemon-hidden-legends",
-    "ex6": "pokemon-firered-leafgreen",
+    "ex6": "pokemon-fire-red-&-leaf-green",
     "ex7": "pokemon-team-rocket-returns",
     "ex8": "pokemon-deoxys",
     "ex9": "pokemon-emerald",
@@ -61,7 +61,7 @@ _SET_SLUG_OVERRIDES = {
     "ex14": "pokemon-crystal-guardians",
     "ex15": "pokemon-dragon-frontiers",
     "ex16": "pokemon-power-keepers",
-    "dp1": "pokemon-diamond-pearl",
+    "dp1": "pokemon-diamond-&-pearl",
     "dp2": "pokemon-mysterious-treasures",
     "dp3": "pokemon-secret-wonders",
     "dp4": "pokemon-great-encounters",
@@ -72,11 +72,11 @@ _SET_SLUG_OVERRIDES = {
     "pl2": "pokemon-rising-rivals",
     "pl3": "pokemon-supreme-victors",
     "pl4": "pokemon-arceus",
-    "hgss1": "pokemon-heartgold-soulsilver",
+    "hgss1": "pokemon-heartgold-&-soulsilver",
     "hgss2": "pokemon-unleashed",
     "hgss3": "pokemon-undaunted",
     "hgss4": "pokemon-triumphant",
-    "bw1": "pokemon-black-white",
+    "bw1": "pokemon-black-&-white",
     "bw2": "pokemon-emerging-powers",
     "bw3": "pokemon-noble-victories",
     "bw4": "pokemon-next-destinies",
@@ -100,7 +100,7 @@ _SET_SLUG_OVERRIDES = {
     "xy10": "pokemon-fates-collide",
     "xy11": "pokemon-steam-siege",
     "xy12": "pokemon-evolutions",
-    "sm1": "pokemon-sun-moon",
+    "sm1": "pokemon-sun-&-moon",
     "sm2": "pokemon-guardians-rising",
     "sm3": "pokemon-burning-shadows",
     "sm35": "pokemon-shining-legends",
@@ -115,10 +115,10 @@ _SET_SLUG_OVERRIDES = {
     "sm11": "pokemon-unified-minds",
     "sm115": "pokemon-hidden-fates",
     "sm12": "pokemon-cosmic-eclipse",
-    "swsh1": "pokemon-sword-shield",
+    "swsh1": "pokemon-sword-&-shield",
     "swsh2": "pokemon-rebel-clash",
     "swsh3": "pokemon-darkness-ablaze",
-    "swsh35": "pokemon-champions-path",
+    "swsh35": "pokemon-champion's-path",
     "swsh4": "pokemon-vivid-voltage",
     "swsh45": "pokemon-shining-fates",
     "swsh5": "pokemon-battle-styles",
@@ -130,7 +130,7 @@ _SET_SLUG_OVERRIDES = {
     "swsh11": "pokemon-lost-origin",
     "swsh12": "pokemon-silver-tempest",
     "swsh12pt5": "pokemon-crown-zenith",
-    "sv1": "pokemon-scarlet-violet",
+    "sv1": "pokemon-scarlet-&-violet",
     "sv2": "pokemon-paldea-evolved",
     "sv3": "pokemon-obsidian-flames",
     "sv3pt5": "pokemon-scarlet-&-violet-151",
@@ -144,6 +144,20 @@ _SET_SLUG_OVERRIDES = {
     "sv8pt5": "pokemon-prismatic-evolutions",
     "sv9": "pokemon-journey-together",
     "sv9pt5": "pokemon-destined-rivals",
+    "sv10": "pokemon-destined-rivals",
+    # Sub-sets / Shiny Vaults / Trainer Galleries (share parent set on PriceCharting)
+    "sma": "pokemon-hidden-fates",
+    "swsh45sv": "pokemon-shining-fates",
+    "swsh9tg": "pokemon-brilliant-stars",
+    "swsh10tg": "pokemon-astral-radiance",
+    "swsh11tg": "pokemon-lost-origin",
+    "swsh12tg": "pokemon-silver-tempest",
+    "swsh12pt5gg": "pokemon-crown-zenith",
+    # Misc
+    "base6": "pokemon-legendary-collection",
+    "col1": "pokemon-call-of-legends",
+    "g1": "pokemon-generations",
+    "sve": None,  # Energies set, no pop data
 }
 
 
@@ -157,7 +171,7 @@ def _slugify_set_name(name):
 
 
 def _get_set_slug(set_id, set_name):
-    """Get PriceCharting slug for a set."""
+    """Get PriceCharting slug for a set. Returns None to skip."""
     if set_id in _SET_SLUG_OVERRIDES:
         return _SET_SLUG_OVERRIDES[set_id]
     return _slugify_set_name(set_name)
@@ -204,6 +218,8 @@ def scrape_set_pop(set_id, set_name=None):
             set_name = row["name"]
 
     slug = _get_set_slug(set_id, set_name)
+    if slug is None:
+        return []
     url = f"https://www.pricecharting.com/pop/set/{slug}"
 
     try:

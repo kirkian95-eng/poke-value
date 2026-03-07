@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Search{% if q %}: {{ q }}{% endif %} - poke-value{% endblock %}
+{% block content %}
+<h1>Search{% if q %}: "{{ q }}"{% endif %}</h1>
+
+{% if not q %}
+<p style="color:#78909c;">Enter a search term to find cards, sets, or sealed products.</p>
+{% else %}
+
+<div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+    <span style="color:#78909c;">Found:</span>
+    <a href="#cards-section" class="search-tab {% if results.intent == 'cards' %}active{% endif %}">Cards ({{ results.cards|length }})</a>
+    <a href="#sets-section" class="search-tab {% if results.intent == 'sets' %}active{% endif %}">Sets ({{ results.sets|length }})</a>
+    <a href="#sealed-section" class="search-tab {% if results.intent == 'sealed' %}active{% endif %}">Sealed ({{ results.sealed|length }})</a>
+</div>
+
+{% set sections = [] %}
+{% if results.intent == 'sets' %}
+    {% set sections = ['sets', 'cards', 'sealed'] %}
+{% elif results.intent == 'sealed' %}
+    {% set sections = ['sealed', 'cards', 'sets'] %}
+{% else %}
+    {% set sections = ['cards', 'sets', 'sealed'] %}
+{% endif %}
+
+{% for section in sections %}
+
+{% if section == 'cards' and results.cards %}
+<div class="section" id="cards-section">
+    <h2>Cards</h2>
+    <table id="cards-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th onclick="sortSearchTable('cards-table', 1)">Card</th>
+                <th onclick="sortSearchTable('cards-table', 2)">Set</th>
+                <th onclick="sortSearchTable('cards-table', 3)">Rarity</th>
+                <th onclick="sortSearchTable('cards-table', 4)">Era</th>
+                <th onclick="sortSearchTable('cards-table', 5)">Released</th>
+                <th onclick="sortSearchTable('cards-table', 6)" class="text-right">Market $</th>
+                <th onclick="sortSearchTable('cards-table', 7)" class="text-right">PSA 10 Pop</th>
+                <th onclick="sortSearchTable('cards-table', 8)" class="text-right">Total Graded</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in results.cards %}
+            <tr>
+                <td class="card-thumb-cell">{% if c.image_url_small %}<img src="{{ c.image_url_small }}" alt="" class="card-thumb" data-large="{{ c.image_url_small|replace('.png', '_hires.png') }}" loading="lazy">{% endif %}</td>
+                <td>
+                    <a href="https://pokemoncard.io/card/{{ c.name|lower|replace(' ', '-')|replace("'", '') }}-{{ c.id }}" target="_blank" rel="noopener" style="color:#fff;">{{ c.name }}</a>
+                    <span style="color:#546e7a;font-size:0.8em;"> #{{ c.number }}</span>
+                </td>
+                <td><a href="{{ url_for('set_detail', set_id=c.set_id) }}" style="color:#78909c;font-size:0.85em;">{{ c.set_name }}</a></td>
+                <td style="color:#78909c;font-size:0.85em;">{{ c.rarity or '-' }}</td>
+                <td style="color:#546e7a;font-size:0.8em;">{{ c.era or '-' }}</td>
+                <td style="color:#546e7a;font-size:0.8em;" data-sort="{{ c.release_date or '' }}">{{ c.release_date or '-' }}</td>
+                <td class="text-right" style="{% if c.tcg_market and c.tcg_market >= 50 %}color:#ffd700;font-weight:bold;{% elif c.tcg_market and c.tcg_market >= 10 %}color:#64b5f6;{% endif %}">{% if c.tcg_market %}${{ "{:,.2f}".format(c.tcg_market) }}{% else %}-{% endif %}</td>
+                <td class="text-right" style="{% if c.psa_10 is not none and c.psa_10 <= 10 %}color:#ef5350;font-weight:bold;{% elif c.psa_10 is not none and c.psa_10 <= 100 %}color:#ffd700;{% endif %}">{% if c.psa_10 is not none %}{{ "{:,}".format(c.psa_10) }}{% else %}-{% endif %}</td>
+                <td class="text-right">{% if c.total_graded is not none %}{{ "{:,}".format(c.total_graded) }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if section == 'sets' and results.sets %}
+<div class="section" id="sets-section">
+    <h2>Sets</h2>
+    <div class="set-grid">
+        {% for s in results.sets %}
+        <a href="{{ url_for('set_detail', set_id=s.id) }}" class="set-card">
+            {% if s.logo_url %}
+            <img src="{{ s.logo_url }}" alt="{{ s.name }}" loading="lazy">
+            {% else %}
+            <div style="width:80px;height:60px;background:#0f3460;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#546e7a;">No Logo</div>
+            {% endif %}
+            <div class="info">
+                <div class="set-name">{{ s.name }}</div>
+                <div class="set-meta">{{ s.era or '' }} &middot; {{ s.release_date or 'Unknown' }} &middot; {{ s.total_cards or '?' }} cards</div>
+            </div>
+            <div class="ev-value">
+                {% if s.ev_per_pack is not none and s.ev_per_pack > 0.10 %}
+                    {% if s.ev_per_pack >= 4.49 %}
+                    <span class="ev-positive">${{ "%.2f"|format(s.ev_per_pack) }}</span>
+                    {% elif s.ev_per_pack >= 3.00 %}
+                    <span class="ev-neutral">${{ "%.2f"|format(s.ev_per_pack) }}</span>
+                    {% else %}
+                    <span style="color:#b0bec5;">${{ "%.2f"|format(s.ev_per_pack) }}</span>
+                    {% endif %}
+                {% else %}
+                    <span class="ev-none">&mdash;</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if section == 'sealed' and results.sealed %}
+<div class="section" id="sealed-section">
+    <h2>Sealed Products</h2>
+    <table id="sealed-table">
+        <thead>
+            <tr>
+                <th onclick="sortSearchTable('sealed-table', 0)">Product</th>
+                <th onclick="sortSearchTable('sealed-table', 1)">Set</th>
+                <th onclick="sortSearchTable('sealed-table', 2)">Type</th>
+                <th onclick="sortSearchTable('sealed-table', 3)">Released</th>
+                <th onclick="sortSearchTable('sealed-table', 4)" class="text-right">Market $</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in results.sealed %}
+            <tr>
+                <td style="color:#fff;">{{ p.name[:65] }}</td>
+                <td><a href="{{ url_for('set_detail', set_id=p.set_id) }}" style="color:#78909c;font-size:0.85em;">{{ p.set_name }}</a></td>
+                <td style="color:#546e7a;font-size:0.85em;">{{ p.product_type or '-' }}</td>
+                <td style="color:#546e7a;font-size:0.85em;">{{ p.release_date or '-' }}</td>
+                <td class="text-right" style="color:#ffd700;font-weight:bold;">{% if p.tcg_market %}${{ "{:,.2f}".format(p.tcg_market) }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% endfor %}
+
+{% if not results.cards and not results.sets and not results.sealed %}
+<p style="color:#78909c;margin-top:1rem;">No results found for "{{ q }}".</p>
+{% endif %}
+
+{% endif %}
+
+<div id="card-preview" class="card-preview"></div>
+
+<script>
+// Card hover preview
+(function() {
+    const preview = document.getElementById('card-preview');
+    document.querySelectorAll('.card-thumb').forEach(img => {
+        img.addEventListener('mouseenter', function(e) {
+            const src = this.dataset.large || this.src;
+            preview.innerHTML = '<img src="' + src + '">';
+            preview.style.display = 'block';
+        });
+        img.addEventListener('mousemove', function(e) {
+            const x = Math.min(e.clientX + 16, window.innerWidth - 300);
+            const y = Math.min(e.clientY - 140, window.innerHeight - 420);
+            preview.style.left = x + 'px';
+            preview.style.top = Math.max(8, y) + 'px';
+        });
+        img.addEventListener('mouseleave', function() {
+            preview.style.display = 'none';
+        });
+    });
+})();
+
+// Sortable columns
+var searchSortDir = {};
+function sortSearchTable(tableId, col) {
+    var table = document.getElementById(tableId);
+    var tbody = table.querySelector('tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    var key = tableId + '-' + col;
+    searchSortDir[key] = !searchSortDir[key];
+    rows.sort(function(a, b) {
+        var aCell = a.children[col];
+        var bCell = b.children[col];
+        var aV = (aCell.dataset.sort || aCell.textContent).trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace('-', '');
+        var bV = (bCell.dataset.sort || bCell.textContent).trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace('-', '');
+        var aN = parseFloat(aV), bN = parseFloat(bV);
+        if (aV === '') aN = -Infinity;
+        if (bV === '') bN = -Infinity;
+        if (!isNaN(aN) && !isNaN(bN)) return searchSortDir[key] ? aN - bN : bN - aN;
+        return searchSortDir[key] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+    });
+    rows.forEach(function(r) { tbody.appendChild(r); });
+}
+</script>
+{% endblock %}

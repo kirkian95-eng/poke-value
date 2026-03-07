@@ -23,7 +23,14 @@ nav .brand {
     font-size: 1.3rem;
     font-weight: bold;
     color: #ffd700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
+
+nav .brand:hover { text-decoration: none; }
+
+nav .brand .logo { flex-shrink: 0; }
 
 .nav-toggle {
     display: none;
@@ -53,9 +60,34 @@ nav .brand {
     color: #b0bec5;
     cursor: pointer;
     text-decoration: none;
+    padding-bottom: 0.5rem;
 }
 
 .nav-dropdown-toggle:hover { color: #fff; }
+
+.nav-search { margin-left: auto; }
+.nav-search input {
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    color: #e0e0e0;
+    padding: 0.35rem 0.7rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    width: 180px;
+}
+.nav-search input:focus { outline: none; border-color: #ffd700; }
+
+/* Search tabs */
+.search-tab {
+    padding: 0.3rem 0.8rem;
+    border-radius: 4px;
+    color: #b0bec5;
+    font-size: 0.9rem;
+    text-decoration: none;
+    border: 1px solid #0f3460;
+}
+.search-tab:hover { color: #fff; border-color: #1a4a8a; text-decoration: none; }
+.search-tab.active { background: #0f3460; color: #ffd700; font-weight: bold; }
 
 .nav-dropdown-menu {
     display: none;
@@ -68,7 +100,7 @@ nav .brand {
     min-width: 180px;
     padding: 0.4rem 0;
     z-index: 100;
-    margin-top: 0.5rem;
+    padding-top: 0.6rem;
 }
 
 .nav-dropdown:hover .nav-dropdown-menu {
@@ -230,6 +262,22 @@ tr:hover { background: #1a2744; }
 
 .btn:hover { background: #1a4a8a; text-decoration: none; }
 .btn-primary { background: #1565c0; border-color: #1976d2; }
+
+/* Card thumbnails */
+.card-thumb-cell { width: 36px; padding: 2px 4px; }
+.card-thumb { width: 32px; height: auto; border-radius: 2px; cursor: pointer; transition: transform 0.15s; }
+.card-thumb:hover { transform: scale(1.1); }
+
+.card-preview {
+    display: none;
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+}
+
+.card-preview img { width: 280px; border-radius: 8px; display: block; }
 
 /* Section spacing */
 .section { margin-bottom: 2rem; }

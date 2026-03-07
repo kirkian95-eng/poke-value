@@ -14,7 +14,8 @@ from engine.set_analysis import (get_set_completion_cost, get_rip_or_flip,
                                  get_pack_investment_data, get_chase_card_trends,
                                  get_psa_analysis, get_cross_set_rarity_stats,
                                  get_grading_roi_candidates, get_arbitrage_opportunities,
-                                 get_rarity_scatter_data, get_sealed_value_breakdown)
+                                 get_rarity_scatter_data, get_sealed_value_breakdown,
+                                 global_search)
 
 app = Flask(__name__)
 
@@ -49,6 +50,21 @@ def dashboard():
     )
 
 
+@app.route("/search")
+def search():
+    """Global search across cards, sets, and sealed products."""
+    q = request.args.get("q", "").strip()
+    results = global_search(q) if q else {"cards": [], "sets": [], "sealed": [], "intent": "cards", "query": ""}
+    return render_template("search.html", results=results, q=q)
+
+
+@app.route("/api/search")
+def api_search():
+    """Search API endpoint."""
+    q = request.args.get("q", "").strip()
+    return jsonify(global_search(q) if q else {"cards": [], "sets": [], "sealed": [], "intent": "cards", "query": ""})
+
+
 @app.route("/sets")
 def sets_list():
     """All sets grid view."""
@@ -76,6 +92,7 @@ def set_detail(set_id):
 
         cards = conn.execute("""
             SELECT c.id, c.name, c.number, c.rarity, c.supertype,
+                   c.image_url_small, c.image_url_large,
                    p.tcg_market, p.cm_avg, p.cm_trend, p.price_source
             FROM cards c
             LEFT JOIN prices p ON c.id = p.card_id

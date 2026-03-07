@@ -15,20 +15,22 @@
 <div class="ev-summary">
     <div class="stat">
         <div class="label">EV Per Pack</div>
-        <div class="value {% if ev_cache and ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache and ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% else %}ev-negative{% endif %}">
-            {% if ev_cache %}${{ "%.2f"|format(ev_cache.ev_per_pack) }}{% else %}N/A{% endif %}
+        <div class="value {% if ev_cache and ev_cache.ev_per_pack > 0.10 %}{% if ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% else %}{% endif %}{% endif %}" {% if not ev_cache or ev_cache.ev_per_pack <= 0.10 %}style="color:#546e7a;"{% elif ev_cache.ev_per_pack < 3.00 %}style="color:#b0bec5;"{% endif %}>
+            {% if ev_cache and ev_cache.ev_per_pack > 0.10 %}${{ "%.2f"|format(ev_cache.ev_per_pack) }}{% elif ev_cache %}No EV data{% else %}N/A{% endif %}
         </div>
     </div>
+    {% if ev_cache and ev_cache.ev_per_pack > 0.10 %}
     <div class="stat">
         <div class="label">Pack MSRP</div>
         <div class="value">$4.49</div>
     </div>
     <div class="stat">
         <div class="label">Value Ratio</div>
-        <div class="value {% if ev_cache and ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache and ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% else %}ev-negative{% endif %}">
-            {% if ev_cache %}{{ "%.0f"|format(ev_cache.ev_per_pack / 4.49 * 100) }}%{% else %}N/A{% endif %}
+        <div class="value {% if ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% endif %}" {% if ev_cache.ev_per_pack < 3.00 %}style="color:#b0bec5;"{% endif %}>
+            {{ "%.0f"|format(ev_cache.ev_per_pack / 4.49 * 100) }}%
         </div>
     </div>
+    {% endif %}
     <div class="stat">
         <div class="label">Cards Priced</div>
         <div class="value" style="color:#64b5f6;">
@@ -366,7 +368,7 @@
         <input type="text" id="card-search" placeholder="Search cards..." oninput="filterCards()">
         <select id="rarity-filter" onchange="filterCards()">
             <option value="">All Rarities</option>
-            {% for r in cards|map(attribute='rarity')|unique|sort %}
+            {% for r in cards|map(attribute='rarity')|select|unique|sort %}
             {% if r %}<option value="{{ r }}">{{ r }}</option>{% endif %}
             {% endfor %}
         </select>
@@ -375,10 +377,11 @@
         <thead>
             <tr>
                 <th onclick="sortTable(0)">#</th>
-                <th onclick="sortTable(1)">Name</th>
-                <th onclick="sortTable(2)">Rarity</th>
-                <th onclick="sortTable(3)" class="text-right">TCG Market $</th>
-                <th onclick="sortTable(4)" class="text-right">CM Trend (EUR)</th>
+                <th></th>
+                <th onclick="sortTable(2)">Name</th>
+                <th onclick="sortTable(3)">Rarity</th>
+                <th onclick="sortTable(4)" class="text-right">TCG Market $</th>
+                <th onclick="sortTable(5)" class="text-right">CM Trend (EUR)</th>
                 <th>Source</th>
             </tr>
         </thead>
@@ -386,7 +389,8 @@
             {% for c in cards %}
             <tr data-name="{{ c.name|lower }}" data-rarity="{{ c.rarity or '' }}">
                 <td>{{ c.number }}</td>
-                <td>{{ c.name }}</td>
+                <td class="card-thumb-cell">{% if c.image_url_small %}<img src="{{ c.image_url_small }}" alt="{{ c.name }}" class="card-thumb" data-large="{{ c.image_url_large or '' }}" loading="lazy">{% endif %}</td>
+                <td><a href="https://pokemoncard.io/card/{{ c.name|lower|replace(' ', '-')|replace("'", '') }}-{{ c.id }}" target="_blank" rel="noopener" style="color:#fff;">{{ c.name }}</a></td>
                 <td>{{ c.rarity or 'Unknown' }}</td>
                 <td class="text-right">{% if c.tcg_market %}${{ "%.2f"|format(c.tcg_market) }}{% else %}-{% endif %}</td>
                 <td class="text-right">{% if c.cm_trend %}{{ "%.2f"|format(c.cm_trend) }}{% else %}-{% endif %}</td>
@@ -395,9 +399,30 @@
             {% endfor %}
         </tbody>
     </table>
+    <div id="card-preview" class="card-preview"></div>
 </div>
 
 <script>
+(function() {
+    const preview = document.getElementById('card-preview');
+    document.querySelectorAll('.card-thumb').forEach(img => {
+        img.addEventListener('mouseenter', function(e) {
+            const src = this.dataset.large || this.src;
+            preview.innerHTML = '<img src="' + src + '">';
+            preview.style.display = 'block';
+        });
+        img.addEventListener('mousemove', function(e) {
+            const x = Math.min(e.clientX + 16, window.innerWidth - 300);
+            const y = Math.min(e.clientY - 140, window.innerHeight - 420);
+            preview.style.left = x + 'px';
+            preview.style.top = Math.max(8, y) + 'px';
+        });
+        img.addEventListener('mouseleave', function() {
+            preview.style.display = 'none';
+        });
+    });
+})();
+
 function filterCards() {
     const search = document.getElementById('card-search').value.toLowerCase();
     const rarity = document.getElementById('rarity-filter').value;

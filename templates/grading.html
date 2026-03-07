@@ -59,9 +59,12 @@
     <tbody>
         {% for c in cards %}
         <tr data-name="{{ c.card_name|lower }} {{ c.set_name|lower }}" data-raw="{{ c.raw_price }}" data-ev="{{ c.expected_graded_value }}">
-            <td>
-                <span style="color:#fff;">{{ c.card_name }}</span>
-                <span style="color:#546e7a;font-size:0.8em;"> #{{ c.card_number }}</span>
+            <td style="display:flex;align-items:center;gap:0.5rem;">
+                {% if c.image_url %}<img src="{{ c.image_url }}" alt="" class="card-thumb" loading="lazy">{% endif %}
+                <div>
+                    <a href="https://pokemoncard.io/card/{{ c.card_name|lower|replace(' ', '-')|replace("'", '') }}-{{ c.card_id }}" target="_blank" rel="noopener" style="color:#fff;">{{ c.card_name }}</a>
+                    <span style="color:#546e7a;font-size:0.8em;"> #{{ c.card_number }}</span>
+                </div>
             </td>
             <td style="color:#78909c;font-size:0.85em;">{{ c.set_name }}</td>
             <td style="color:#78909c;font-size:0.85em;">{{ c.rarity or '-' }}</td>
