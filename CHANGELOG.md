@@ -4,6 +4,23 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-07 — Graded EV Model, Sorting Fix, Real Pack Prices
+
+### Added
+- **Graded EV model** — Shows expected pack value if hit-slot cards are graded (PSA). Uses era-based grade distributions derived from PSA pop data (e.g., Base Set: 3% PSA 10, 17% PSA 9; SV: 37% PSA 10, 48% PSA 9) and grade price multipliers. Falls back to actual graded prices from DB when available. Subtracts $20 grading fee. Only grades cards where grading profit exceeds raw price. Displayed on set detail page in EV summary (purple) and dedicated breakdown table.
+
+---
+
+## 2026-03-07 — Sorting Fix, Real Pack Prices, Era Dropdowns
+
+### Fixed
+- **Table sorting bug** — All 10 sortable tables stripped the minus sign from negative numbers, causing profit/loss columns to sort by absolute value. Created shared `parseSortVal()` and `sortTableById()` utilities in `charts.js`. Null/missing data ('-') now sorts to bottom instead of being treated as zero.
+- **Pack price was hardcoded $4.49** — EV cache now uses real sealed booster pack prices from TCGPlayer when available. Vintage sets (Base=$652, Skyridge=$2500) now show actual pack price and correct value ratios. Sets without sealed data and modern in-print sets fall back to $4.49 MSRP.
+- **Code cards in pack price lookup** — "Code Card - Booster Pack" products ($0.03) were being selected as the cheapest pack price. Now excluded.
+- **Era filter dropdowns** — Updated completion, compare, chase cards, and pack investment pages from 6 eras to 13 (added mega, hgss, pl, dp, ex, ecard, neo, base). Removed stale "classic" option.
+
+---
+
 ## 2026-03-07 — Sealed Value Breakdown (Expanded)
 
 ### Added

@@ -116,20 +116,8 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const tbody = document.querySelector('#psa-table tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aV = a.children[col].textContent.trim().replace(/[$,%x]/g, '').replace(/,/g, '').replace('-', '-999999');
-        let bV = b.children[col].textContent.trim().replace(/[$,%x]/g, '').replace(/,/g, '').replace('-', '-999999');
-        const aN = parseFloat(aV), bN = parseFloat(bV);
-        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
-        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
-    });
-    rows.forEach(r => tbody.appendChild(r));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('psa-table', col); }
 
 // Scatter chart: PSA 10 Pop vs Graded Price
 {% if with_prices|length > 5 %}

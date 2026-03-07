@@ -39,17 +39,19 @@
     <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
     <select id="era-filter" onchange="filterRows()">
         <option value="">All Eras</option>
-        <option value="classic">Classic / WOTC</option>
-        <option value="neo">Neo</option>
-        <option value="ex">ex</option>
-        <option value="dp">Diamond & Pearl</option>
-        <option value="pl">Platinum</option>
-        <option value="hgss">HGSS</option>
-        <option value="bw">Black & White</option>
-        <option value="xy">XY</option>
-        <option value="sm">Sun & Moon</option>
-        <option value="swsh">Sword & Shield</option>
         <option value="sv">Scarlet & Violet</option>
+        <option value="mega">Mega Evolution</option>
+        <option value="swsh">Sword & Shield</option>
+        <option value="sm">Sun & Moon</option>
+        <option value="xy">XY</option>
+        <option value="bw">Black & White</option>
+        <option value="hgss">HGSS</option>
+        <option value="pl">Platinum</option>
+        <option value="dp">Diamond & Pearl</option>
+        <option value="ex">ex</option>
+        <option value="ecard">e-Card</option>
+        <option value="neo">Neo</option>
+        <option value="base">Base / WOTC</option>
     </select>
 </div>
 
@@ -175,19 +177,7 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const tbody = document.querySelector('#pack-table tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aV = a.children[col].textContent.trim().replace(/[$,%y]/g, '').replace(/,/g, '').replace('WIN','1').replace('LOSE','0');
-        let bV = b.children[col].textContent.trim().replace(/[$,%y]/g, '').replace(/,/g, '').replace('WIN','1').replace('LOSE','0');
-        const aN = parseFloat(aV), bN = parseFloat(bV);
-        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
-        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
-    });
-    rows.forEach(r => tbody.appendChild(r));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('pack-table', col); }
 </script>
 {% endblock %}

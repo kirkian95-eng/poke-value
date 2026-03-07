@@ -159,23 +159,28 @@
 })();
 
 // Sortable columns
-var searchSortDir = {};
+var sortDir = {};
 function sortSearchTable(tableId, col) {
+    sortDir[tableId + '-' + col] = sortDir[tableId + '-' + col] === undefined ? true : !sortDir[tableId + '-' + col];
+    var origCol = col;
+    // Use the shared sort — but search tables use per-table sortDir keys
     var table = document.getElementById(tableId);
     var tbody = table.querySelector('tbody');
     var rows = Array.from(tbody.querySelectorAll('tr'));
-    var key = tableId + '-' + col;
-    searchSortDir[key] = !searchSortDir[key];
+    var asc = sortDir[tableId + '-' + col];
     rows.sort(function(a, b) {
         var aCell = a.children[col];
         var bCell = b.children[col];
-        var aV = (aCell.dataset.sort || aCell.textContent).trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace('-', '');
-        var bV = (bCell.dataset.sort || bCell.textContent).trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace('-', '');
-        var aN = parseFloat(aV), bN = parseFloat(bV);
-        if (aV === '') aN = -Infinity;
-        if (bV === '') bN = -Infinity;
-        if (!isNaN(aN) && !isNaN(bN)) return searchSortDir[key] ? aN - bN : bN - aN;
-        return searchSortDir[key] ? aV.localeCompare(bV) : bV.localeCompare(aV);
+        var aV = parseSortVal(aCell.dataset.sort || aCell.textContent);
+        var bV = parseSortVal(bCell.dataset.sort || bCell.textContent);
+        if (aV !== null && bV !== null) return asc ? aV - bV : bV - aV;
+        if (aV === null && bV === null) {
+            var aT = (aCell.dataset.sort || aCell.textContent).trim();
+            var bT = (bCell.dataset.sort || bCell.textContent).trim();
+            return asc ? aT.localeCompare(bT) : bT.localeCompare(aT);
+        }
+        if (aV === null) return 1;
+        return -1;
     });
     rows.forEach(function(r) { tbody.appendChild(r); });
 }

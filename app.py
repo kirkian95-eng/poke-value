@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from database.connection import get_db
 from database.schema import init_db
-from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution
+from engine.ev_calculator import calculate_set_ev, calculate_pack_distribution, calculate_graded_ev
 from engine.set_analysis import (get_set_completion_cost, get_rip_or_flip,
                                  get_pack_investment_data, get_chase_card_trends,
                                  get_psa_analysis, get_cross_set_rarity_stats,
@@ -135,6 +135,11 @@ def set_detail(set_id):
     # Price vs rarity scatter data
     scatter_data = get_rarity_scatter_data(set_id)
 
+    # Graded EV (only compute for sets with meaningful EV)
+    graded_ev = None
+    if ev_cache and ev_cache["ev_per_pack"] and ev_cache["ev_per_pack"] > 0.10:
+        graded_ev = calculate_graded_ev(set_id)
+
     return render_template("set_detail.html",
         set_info=set_info,
         cards=cards,
@@ -146,6 +151,7 @@ def set_detail(set_id):
         completion=completion,
         rip_or_flip=rip_or_flip,
         scatter_data=scatter_data,
+        graded_ev=graded_ev,
     )
 
 

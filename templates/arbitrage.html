@@ -104,19 +104,7 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const tbody = document.querySelector('#arb-table tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aV = a.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
-        let bV = b.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
-        const aN = parseFloat(aV), bN = parseFloat(bV);
-        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
-        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
-    });
-    rows.forEach(r => tbody.appendChild(r));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('arb-table', col); }
 </script>
 {% endblock %}

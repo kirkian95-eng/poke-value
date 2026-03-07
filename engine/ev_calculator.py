@@ -211,6 +211,32 @@ def _compute_god_pack_ev(composition, all_cards):
 def _cache_ev(set_id, result):
     """Store computed EV in the cache table."""
     with get_db() as conn:
+        # Use real sealed pack price if available, else fall back to MSRP
+        pack_row = conn.execute("""
+            SELECT MIN(tcg_market) FROM sealed_products
+            WHERE set_id = ? AND tcg_market > 0
+              AND (name LIKE '%ooster Pack%' OR name LIKE '%ooster pack%')
+              AND name NOT LIKE '%Case%'
+              AND name NOT LIKE '%Bundle%'
+              AND name NOT LIKE '%Set of%'
+              AND name NOT LIKE '%Art Bundle%'
+              AND name NOT LIKE '%Code Card%'
+              AND name NOT LIKE '%code card%'
+              AND name NOT LIKE '%Sleeved%'
+        """, (set_id,)).fetchone()
+        if pack_row and pack_row[0]:
+            pack_price = pack_row[0]
+        else:
+            # Only use $4.49 MSRP for modern sets still in print
+            era = conn.execute(
+                "SELECT era FROM sets WHERE id = ?", (set_id,)
+            ).fetchone()
+            era_val = era["era"] if era else ""
+            if era_val in ("sv", "mega"):
+                pack_price = 4.49
+            else:
+                pack_price = None
+
         conn.execute("""
             INSERT OR REPLACE INTO ev_cache
             (set_id, ev_per_pack, ev_breakdown, pack_price, calculated_at)
@@ -219,7 +245,7 @@ def _cache_ev(set_id, result):
             set_id,
             result["ev_per_pack"],
             json.dumps(result["ev_breakdown"]),
-            4.49,
+            pack_price,
             result["calculated_at"],
         ))
 
@@ -404,6 +430,197 @@ def calculate_pack_distribution(set_id):
         "outcomes": outcomes,
         "histogram": histogram,
         "stats": stats,
+    }
+
+
+# ── Graded EV Model ──────────────────────────────────────────────────────
+# Pack-fresh grade distributions derived from PSA pop data by era.
+# Represents P(grade | card pulled from a sealed pack).
+# Keys are PSA grades 10 down to 6; remainder lumped into "below".
+_GRADE_DIST = {
+    "sv":    {10: 0.37, 9: 0.48, 8: 0.12, 7: 0.02, 6: 0.01},
+    "mega":  {10: 0.37, 9: 0.48, 8: 0.12, 7: 0.02, 6: 0.01},
+    "swsh":  {10: 0.54, 9: 0.35, 8: 0.08, 7: 0.02, 6: 0.01},
+    "sm":    {10: 0.41, 9: 0.37, 8: 0.16, 7: 0.03, 6: 0.02},
+    "xy":    {10: 0.22, 9: 0.37, 8: 0.24, 7: 0.09, 6: 0.05},
+    "bw":    {10: 0.08, 9: 0.28, 8: 0.31, 7: 0.16, 6: 0.09},
+    "hgss":  {10: 0.05, 9: 0.25, 8: 0.35, 7: 0.18, 6: 0.09},
+    "pl":    {10: 0.05, 9: 0.25, 8: 0.35, 7: 0.18, 6: 0.09},
+    "dp":    {10: 0.05, 9: 0.25, 8: 0.35, 7: 0.18, 6: 0.09},
+    "ex":    {10: 0.11, 9: 0.28, 8: 0.26, 7: 0.13, 6: 0.09},
+    "ecard": {10: 0.05, 9: 0.20, 8: 0.30, 7: 0.20, 6: 0.12},
+    "neo":   {10: 0.05, 9: 0.21, 8: 0.32, 7: 0.18, 6: 0.12},
+    "base":  {10: 0.03, 9: 0.17, 8: 0.30, 7: 0.20, 6: 0.14},
+}
+
+# Grade price multipliers vs raw (ungraded) price.
+# Derived from PriceCharting graded price data (20-card sample).
+# Modern cards have lower multipliers; vintage has extreme PSA 10 premiums.
+_GRADE_MULT_MODERN = {10: 2.5, 9: 1.4, 8: 1.0, 7: 0.85, 6: 0.70}
+_GRADE_MULT_VINTAGE = {10: 12.0, 9: 3.5, 8: 1.5, 7: 1.0, 6: 0.75}
+_MODERN_ERAS = {"sv", "mega", "swsh", "sm"}
+
+
+def _expected_graded_value(card_id, raw_price, era):
+    """
+    Estimate the expected graded value of a card.
+
+    Uses actual graded prices from DB when available, otherwise applies
+    era-based grade multipliers to the raw price. Weights by pack-fresh
+    grade distribution for the era.
+
+    Returns the expected value (before grading fee).
+    """
+    if raw_price <= 0:
+        return 0.0
+
+    grade_dist = _GRADE_DIST.get(era, _GRADE_DIST.get("sv"))
+
+    # Try to get actual graded prices from DB
+    with get_db() as conn:
+        graded = conn.execute("""
+            SELECT grade, market_price FROM graded_prices
+            WHERE card_id = ? AND market_price > 0
+        """, (card_id,)).fetchall()
+
+    graded_map = {}
+    for g in graded:
+        grade_str = g["grade"].replace("Grade ", "")
+        try:
+            graded_map[int(grade_str)] = g["market_price"]
+        except ValueError:
+            pass
+
+    # Calculate expected value across grade distribution
+    mults = _GRADE_MULT_MODERN if era in _MODERN_ERAS else _GRADE_MULT_VINTAGE
+    ev = 0.0
+    for grade, prob in grade_dist.items():
+        if grade in graded_map:
+            ev += prob * graded_map[grade]
+        else:
+            ev += prob * raw_price * mults.get(grade, 0.8)
+
+    return ev
+
+
+def calculate_graded_ev(set_id, grading_fee=20.0):
+    """
+    Calculate graded EV of a booster pack — expected value if you grade
+    every hit-slot card pulled.
+
+    Only grades hit-slot cards (rares, ultras, etc). Commons/uncommons
+    use raw prices since grading them isn't worthwhile.
+
+    Returns dict with graded_ev_per_pack and breakdown, or None if no data.
+    """
+    pull_rates = get_set_pull_rates(set_id)
+
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT c.id, c.name, c.number, c.rarity, c.supertype,
+                   p.tcg_market, p.tcg_reverse_holo, p.cm_avg, p.cm_trend
+            FROM cards c
+            LEFT JOIN prices p ON c.id = p.card_id
+            WHERE c.set_id = ?
+        """, (set_id,)).fetchall()
+
+        set_info = conn.execute(
+            "SELECT name, era FROM sets WHERE id = ?", (set_id,)
+        ).fetchone()
+
+    if not set_info:
+        return None
+
+    era = set_info["era"] or "sv"
+    cards = [dict(r) for r in rows]
+
+    by_rarity = {}
+    for card in cards:
+        r = card.get("rarity") or "Unknown"
+        by_rarity.setdefault(r, []).append(card)
+
+    # Base value from guaranteed + reverse holo slots (same as raw EV)
+    base_value = 0.0
+    for rate in pull_rates:
+        slot_type = rate["slot_type"]
+        guaranteed = rate["guaranteed_count"]
+        rarity = rate["rarity"]
+
+        if slot_type == "reverse_holo":
+            reverse_cards = []
+            for r in ("Common", "Uncommon", "Rare", "Rare Holo"):
+                reverse_cards.extend(by_rarity.get(r, []))
+            n_rev = len(reverse_cards)
+            if n_rev == 0:
+                continue
+            for card in reverse_cards:
+                base_value += (guaranteed / n_rev) * _get_reverse_holo_price(card)
+        elif slot_type == "guaranteed":
+            rarity_cards = by_rarity.get(rarity, [])
+            n_cards = len(rarity_cards)
+            if n_cards == 0:
+                continue
+            for card in rarity_cards:
+                base_value += (guaranteed / n_cards) * _get_price(card)
+
+    # Graded EV from hit slot cards
+    graded_ev_total = 0.0
+    raw_ev_total = 0.0
+    breakdown = []
+
+    for rate in pull_rates:
+        if rate["slot_type"] != "hit_slot":
+            continue
+        rarity = rate["rarity"]
+        prob_rarity = rate["probability_per_pack"]
+        rarity_cards = by_rarity.get(rarity, [])
+        n_cards = len(rarity_cards)
+        if n_cards == 0:
+            continue
+
+        p_each = prob_rarity / n_cards
+        rarity_graded_ev = 0.0
+        rarity_raw_ev = 0.0
+
+        for card in rarity_cards:
+            raw = _get_price(card)
+            graded_val = _expected_graded_value(card["id"], raw, era)
+            # Net graded value: only grade if it beats raw - fee
+            net_graded = max(raw, graded_val - grading_fee)
+            rarity_graded_ev += p_each * net_graded
+            rarity_raw_ev += p_each * raw
+
+        graded_ev_total += rarity_graded_ev
+        raw_ev_total += rarity_raw_ev
+
+        if rarity_graded_ev > 0:
+            breakdown.append({
+                "rarity": rarity,
+                "card_count": n_cards,
+                "raw_ev": round(rarity_raw_ev, 4),
+                "graded_ev": round(rarity_graded_ev, 4),
+                "uplift_pct": round(
+                    (rarity_graded_ev / rarity_raw_ev - 1) * 100, 1
+                ) if rarity_raw_ev > 0 else 0,
+            })
+
+    breakdown.sort(key=lambda x: x["graded_ev"], reverse=True)
+
+    graded_pack_ev = base_value + graded_ev_total
+    raw_pack_ev = base_value + raw_ev_total
+
+    return {
+        "set_id": set_id,
+        "set_name": set_info["name"],
+        "era": era,
+        "graded_ev_per_pack": round(graded_pack_ev, 2),
+        "raw_ev_per_pack": round(raw_pack_ev, 2),
+        "grading_fee": grading_fee,
+        "uplift_pct": round(
+            (graded_pack_ev / raw_pack_ev - 1) * 100, 1
+        ) if raw_pack_ev > 0 else 0,
+        "breakdown": breakdown,
+        "grade_distribution": _GRADE_DIST.get(era, _GRADE_DIST["sv"]),
     }
 
 

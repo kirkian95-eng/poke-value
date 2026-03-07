@@ -34,11 +34,18 @@
     <select id="era-filter" onchange="applyFilters()">
         <option value="">All Eras</option>
         <option value="sv" {% if current_era == 'sv' %}selected{% endif %}>Scarlet & Violet</option>
+        <option value="mega" {% if current_era == 'mega' %}selected{% endif %}>Mega Evolution</option>
         <option value="swsh" {% if current_era == 'swsh' %}selected{% endif %}>Sword & Shield</option>
         <option value="sm" {% if current_era == 'sm' %}selected{% endif %}>Sun & Moon</option>
         <option value="xy" {% if current_era == 'xy' %}selected{% endif %}>XY</option>
         <option value="bw" {% if current_era == 'bw' %}selected{% endif %}>Black & White</option>
-        <option value="classic" {% if current_era == 'classic' %}selected{% endif %}>Classic</option>
+        <option value="hgss" {% if current_era == 'hgss' %}selected{% endif %}>HGSS</option>
+        <option value="pl" {% if current_era == 'pl' %}selected{% endif %}>Platinum</option>
+        <option value="dp" {% if current_era == 'dp' %}selected{% endif %}>Diamond & Pearl</option>
+        <option value="ex" {% if current_era == 'ex' %}selected{% endif %}>ex</option>
+        <option value="ecard" {% if current_era == 'ecard' %}selected{% endif %}>e-Card</option>
+        <option value="neo" {% if current_era == 'neo' %}selected{% endif %}>Neo</option>
+        <option value="base" {% if current_era == 'base' %}selected{% endif %}>Base / WOTC</option>
     </select>
     <input type="text" id="search" placeholder="Search sets..." oninput="filterRows()">
 </div>
@@ -96,20 +103,8 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const tbody = document.querySelector('#compare-table tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aV = a.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
-        let bV = b.children[col].textContent.trim().replace(/[$,%]/g, '').replace(/,/g, '').replace('-', '0');
-        const aN = parseFloat(aV), bN = parseFloat(bV);
-        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
-        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
-    });
-    rows.forEach(r => tbody.appendChild(r));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('compare-table', col); }
 
 {% if data|length > 3 %}
 const cmpData = {{ data|tojson }};

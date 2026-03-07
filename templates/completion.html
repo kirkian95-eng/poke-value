@@ -9,11 +9,18 @@
     <select id="era-filter" onchange="filterRows()">
         <option value="">All Eras</option>
         <option value="sv">Scarlet & Violet</option>
+        <option value="mega">Mega Evolution</option>
         <option value="swsh">Sword & Shield</option>
         <option value="sm">Sun & Moon</option>
         <option value="xy">XY</option>
         <option value="bw">Black & White</option>
-        <option value="classic">Classic</option>
+        <option value="hgss">HGSS</option>
+        <option value="pl">Platinum</option>
+        <option value="dp">Diamond & Pearl</option>
+        <option value="ex">ex</option>
+        <option value="ecard">e-Card</option>
+        <option value="neo">Neo</option>
+        <option value="base">Base / WOTC</option>
     </select>
 </div>
 
@@ -58,23 +65,7 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const table = document.getElementById('completion-table');
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('-', '0');
-        let bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('-', '0');
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-            return sortDir[col] ? aNum - bNum : bNum - aNum;
-        }
-        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-    rows.forEach(row => tbody.appendChild(row));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('completion-table', col); }
 </script>
 {% endblock %}

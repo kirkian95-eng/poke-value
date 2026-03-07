@@ -4,6 +4,30 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 
 ---
 
+## #21 Graded EV Model — Multiplier Approach
+
+**Date:** 2026-03-07
+
+**Decision:** Use era-based grade multipliers (PSA 10 = 2.5x raw for modern, 12x for vintage) combined with PSA pop-derived grade distributions, rather than requiring per-card graded prices. Falls back to actual graded prices from `graded_prices` table when available (currently 20 cards).
+
+**Why:** We only have per-card graded prices for 20 cards, but 4,427 cards have PSA pop data. The multiplier approach gives useful estimates for all sets. The multipliers were calibrated from the 20-card sample (e.g., PSA 10 avg = 18x raw across our data, but capped at 12x for vintage and 2.5x for modern to be conservative).
+
+**Tradeoff:** Multipliers are rough averages — actual grading premiums vary wildly by card. A Charizard PSA 10 is 39x raw, while a common holo might only be 2x. As we scrape more graded prices from PriceCharting, the model will improve by using more real data and fewer multiplier fallbacks.
+
+---
+
+## #20 Real Pack Prices vs Hardcoded MSRP
+
+**Date:** 2026-03-07
+
+**Decision:** EV cache now looks up the cheapest non-code, non-sleeved, non-case "Booster Pack" product from `sealed_products` for each set. Falls back to $4.49 MSRP only for current SV/Mega era sets (still in print). Sets without sealed data get `pack_price = NULL`.
+
+**Why:** Hardcoded $4.49 was wildly misleading for vintage sets. A Base Set pack costs $652, so showing "$47 EV vs $4.49 MSRP = 1044% value ratio" was wrong — it should be "7.2% value ratio (you're paying for collectibility, not card value)." Real pack prices from TCGPlayer sealed data give accurate economics.
+
+**Tradeoff:** ~30 vintage sets have no sealed pack data in our DB and get NULL pack price (no value ratio shown). This is better than showing a fake $4.49. Could be improved by scraping more sealed data.
+
+---
+
 ## #19 Sealed Value Auto-Detection vs Manual Mapping
 
 **Date:** 2026-03-07

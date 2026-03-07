@@ -88,6 +88,75 @@ function createChart(ctx, type, data, options) {
     return new Chart(ctx, { type, data, options: merged });
 }
 
+/**
+ * Parse a table cell's text content into a numeric value for sorting.
+ * Strips $, commas, %, +, and other formatting.
+ * Returns null for empty/missing data (displayed as '-' or '—').
+ * Preserves negative signs for proper numeric sorting.
+ */
+function parseSortVal(text) {
+    var v = text.trim()
+        .replace(/[$,%+]/g, '')
+        .replace(/,/g, '')
+        .replace(/promos/g, '')
+        .trim();
+    if (v === '' || v === '-' || v === '\u2014' || v === '?') return null;
+    if (v === 'WIN' || v === 'RIP') return 1;
+    if (v === 'LOSE' || v === 'FLIP') return 0;
+    if (v === 'EVEN') return 0.5;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+}
+
+/**
+ * Generic table sort handler. Call from onclick="sortTable(col)".
+ * Requires a global `sortDir` object and a table with the given ID.
+ */
+function sortTableById(tableId, col, paired) {
+    var table = document.getElementById(tableId);
+    var tbody = table.querySelector('tbody');
+    var allRows = Array.from(tbody.querySelectorAll('tr'));
+    sortDir[col] = !sortDir[col];
+
+    if (paired) {
+        // Handle paired rows (main + detail row)
+        var pairs = [];
+        for (var i = 0; i < allRows.length; i += 2) {
+            pairs.push({ main: allRows[i], detail: allRows[i + 1] });
+        }
+        pairs.sort(function(a, b) {
+            var aCell = a.main.children[col];
+            var bCell = b.main.children[col];
+            var aV = parseSortVal((aCell.dataset.sort || aCell.textContent));
+            var bV = parseSortVal((bCell.dataset.sort || bCell.textContent));
+            if (aV !== null && bV !== null) return sortDir[col] ? aV - bV : bV - aV;
+            if (aV === null && bV === null) return 0;
+            if (aV === null) return 1;
+            return -1;
+        });
+        pairs.forEach(function(p) {
+            tbody.appendChild(p.main);
+            tbody.appendChild(p.detail);
+        });
+    } else {
+        allRows.sort(function(a, b) {
+            var aCell = a.children[col];
+            var bCell = b.children[col];
+            var aV = parseSortVal((aCell.dataset.sort || aCell.textContent));
+            var bV = parseSortVal((bCell.dataset.sort || bCell.textContent));
+            if (aV !== null && bV !== null) return sortDir[col] ? aV - bV : bV - aV;
+            if (aV === null && bV === null) {
+                var aT = (aCell.dataset.sort || aCell.textContent).trim();
+                var bT = (bCell.dataset.sort || bCell.textContent).trim();
+                return sortDir[col] ? aT.localeCompare(bT) : bT.localeCompare(aT);
+            }
+            if (aV === null) return 1;
+            return -1;
+        });
+        allRows.forEach(function(r) { tbody.appendChild(r); });
+    }
+}
+
 /** Deep merge two objects (b overrides a). */
 function deepMerge(a, b) {
     const result = { ...a };

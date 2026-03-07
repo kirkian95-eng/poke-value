@@ -85,26 +85,7 @@ function filterRows() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const table = document.getElementById('rof-table');
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '').replace('-', () => '');
-        let bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '').replace('-', () => '');
-        // Re-extract for proper negative handling
-        aVal = a.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '');
-        bVal = b.children[col].textContent.trim().replace('$', '').replace(/,/g, '').replace('+', '').replace('%', '');
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-            return sortDir[col] ? aNum - bNum : bNum - aNum;
-        }
-        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-    rows.forEach(row => tbody.appendChild(row));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('rof-table', col); }
 </script>
 {% endblock %}

@@ -19,15 +19,24 @@
             {% if ev_cache and ev_cache.ev_per_pack > 0.10 %}${{ "%.2f"|format(ev_cache.ev_per_pack) }}{% elif ev_cache %}No EV data{% else %}N/A{% endif %}
         </div>
     </div>
-    {% if ev_cache and ev_cache.ev_per_pack > 0.10 %}
+    {% if graded_ev and graded_ev.graded_ev_per_pack > graded_ev.raw_ev_per_pack %}
     <div class="stat">
-        <div class="label">Pack MSRP</div>
-        <div class="value">$4.49</div>
+        <div class="label">Graded EV</div>
+        <div class="value" style="color:#ce93d8;" title="Expected value if you grade every hit-slot card (minus ${{ "%.0f"|format(graded_ev.grading_fee) }} fee). Uses era-based grade distributions and price multipliers.">${{ "{:,.2f}".format(graded_ev.graded_ev_per_pack) }}
+            <span style="font-size:0.55em;color:#78909c;"> (+{{ graded_ev.uplift_pct }}%)</span>
+        </div>
+    </div>
+    {% endif %}
+    {% if ev_cache and ev_cache.ev_per_pack > 0.10 and ev_cache.pack_price %}
+    <div class="stat">
+        <div class="label">Pack Price</div>
+        <div class="value">${{ "{:,.2f}".format(ev_cache.pack_price) }}</div>
     </div>
     <div class="stat">
         <div class="label">Value Ratio</div>
-        <div class="value {% if ev_cache.ev_per_pack >= 4.49 %}ev-positive{% elif ev_cache.ev_per_pack >= 3.00 %}ev-neutral{% endif %}" {% if ev_cache.ev_per_pack < 3.00 %}style="color:#b0bec5;"{% endif %}>
-            {{ "%.0f"|format(ev_cache.ev_per_pack / 4.49 * 100) }}%
+        {% set vr = ev_cache.ev_per_pack / ev_cache.pack_price * 100 %}
+        <div class="value {% if vr >= 100 %}ev-positive{% elif vr >= 67 %}ev-neutral{% endif %}" {% if vr < 67 %}style="color:#b0bec5;"{% endif %}>
+            {{ "%.0f"|format(vr) }}%
         </div>
     </div>
     {% endif %}
@@ -191,9 +200,9 @@
             <canvas id="dist-chart"></canvas>
         </div>
         <div style="margin-top:0.5rem;font-size:0.75rem;color:#546e7a;">
-            <span style="color:#ef5350;">&#9632;</span> Below MSRP &nbsp;
-            <span style="color:#ffd700;">&#9632;</span> Near MSRP &nbsp;
-            <span style="color:#66bb6a;">&#9632;</span> Above MSRP ($4.49)
+            <span style="color:#ef5350;">&#9632;</span> Below Pack Price &nbsp;
+            <span style="color:#ffd700;">&#9632;</span> Near Pack Price &nbsp;
+            <span style="color:#66bb6a;">&#9632;</span> Above Pack Price{% if ev_cache and ev_cache.pack_price %} (${{ "{:,.2f}".format(ev_cache.pack_price) }}){% endif %}
         </div>
     </div>
     <script>
@@ -324,6 +333,42 @@
 </div>
 {% endif %}
 
+<!-- Graded EV Breakdown -->
+{% if graded_ev and graded_ev.graded_ev_per_pack > graded_ev.raw_ev_per_pack %}
+<div class="section">
+    <h2 style="color:#ce93d8;">Graded EV Breakdown</h2>
+    <p style="color:#78909c;font-size:0.85rem;margin-bottom:1rem;">Expected value if you grade every hit-slot card pulled from the pack. Assumes ${{ "%.0f"|format(graded_ev.grading_fee) }} grading fee and {{ graded_ev.era }} era grade distribution (PSA 10: {{ "%.0f"|format(graded_ev.grade_distribution[10] * 100) }}%, PSA 9: {{ "%.0f"|format(graded_ev.grade_distribution[9] * 100) }}%). Cards where grading isn't profitable use raw price instead.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Rarity</th>
+                <th class="text-right">Cards</th>
+                <th class="text-right">Raw EV</th>
+                <th class="text-right">Graded EV</th>
+                <th class="text-right">Uplift</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in graded_ev.breakdown %}
+            <tr>
+                <td>{{ b.rarity }}</td>
+                <td class="text-right">{{ b.card_count }}</td>
+                <td class="text-right">${{ "%.2f"|format(b.raw_ev) }}</td>
+                <td class="text-right" style="color:#ce93d8;font-weight:bold;">${{ "%.2f"|format(b.graded_ev) }}</td>
+                <td class="text-right" style="color:{% if b.uplift_pct > 0 %}#66bb6a{% else %}#78909c{% endif %};">{% if b.uplift_pct > 0 %}+{{ b.uplift_pct }}%{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:bold;border-top:2px solid #0f3460;">
+                <td colspan="2">Total Graded Pack EV</td>
+                <td class="text-right">${{ "%.2f"|format(graded_ev.raw_ev_per_pack) }}</td>
+                <td class="text-right" style="color:#ce93d8;">${{ "%.2f"|format(graded_ev.graded_ev_per_pack) }}</td>
+                <td class="text-right" style="color:#66bb6a;">+{{ graded_ev.uplift_pct }}%</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <!-- Pull Rates -->
 {% if pull_rates %}
 <div class="section">
@@ -436,23 +481,7 @@ function filterCards() {
     });
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const table = document.getElementById('card-table');
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aVal = a.children[col].textContent.trim().replace('$', '').replace('-', '0');
-        let bVal = b.children[col].textContent.trim().replace('$', '').replace('-', '0');
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-            return sortDir[col] ? aNum - bNum : bNum - aNum;
-        }
-        return sortDir[col] ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    });
-    rows.forEach(row => tbody.appendChild(row));
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('card-table', col); }
 </script>
 {% endblock %}

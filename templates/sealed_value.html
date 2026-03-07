@@ -142,23 +142,7 @@ function toggleDetail(row) {
     detail.style.display = detail.style.display === 'none' ? '' : 'none';
 }
 
-let sortDir = {};
-function sortTable(col) {
-    const tbody = document.querySelector('#sealed-table tbody');
-    const rows = [];
-    const allRows = Array.from(tbody.querySelectorAll('tr'));
-    for (let i = 0; i < allRows.length; i += 2) {
-        rows.push({ main: allRows[i], detail: allRows[i + 1] });
-    }
-    sortDir[col] = !sortDir[col];
-    rows.sort((a, b) => {
-        let aV = a.main.children[col].textContent.trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace(/promos/g, '').replace('-', '0');
-        let bV = b.main.children[col].textContent.trim().replace(/[$,%+]/g, '').replace(/,/g, '').replace(/promos/g, '').replace('-', '0');
-        const aN = parseFloat(aV), bN = parseFloat(bV);
-        if (!isNaN(aN) && !isNaN(bN)) return sortDir[col] ? aN - bN : bN - aN;
-        return sortDir[col] ? aV.localeCompare(bV) : bV.localeCompare(aV);
-    });
-    rows.forEach(r => { tbody.appendChild(r.main); tbody.appendChild(r.detail); });
-}
+var sortDir = {};
+function sortTable(col) { sortTableById('sealed-table', col, true); }
 </script>
 {% endblock %}
