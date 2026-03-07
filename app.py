@@ -166,19 +166,38 @@ def recalculate(set_id):
 def completion():
     """Set completion cost comparison page."""
     with get_db() as conn:
-        sets = conn.execute("""
-            SELECT s.id, s.name, s.era, s.release_date, s.total_cards
+        rows = conn.execute("""
+            SELECT s.id as set_id, s.name as set_name, s.era, s.release_date,
+                   COUNT(c.id) as total_cards,
+                   COUNT(CASE WHEN COALESCE(p.tcg_market, 0) > 0
+                              OR COALESCE(p.tcg_low, 0) > 0 THEN 1 END) as cards_priced,
+                   COALESCE(SUM(CASE WHEN COALESCE(p.tcg_market, 0) > 0
+                              OR COALESCE(p.tcg_low, 0) > 0
+                              THEN p.tcg_market ELSE 0 END), 0) as total_market,
+                   COALESCE(SUM(CASE WHEN COALESCE(p.tcg_market, 0) > 0
+                              OR COALESCE(p.tcg_low, 0) > 0
+                              THEN p.tcg_low ELSE 0 END), 0) as total_low
             FROM sets s
+            JOIN cards c ON c.set_id = s.id
+            LEFT JOIN prices p ON c.id = p.card_id
+            GROUP BY s.id
+            HAVING cards_priced > 0
             ORDER BY s.release_date DESC
         """).fetchall()
 
     results = []
-    for s in sets:
-        cost = get_set_completion_cost(s["id"])
-        if cost and cost["cards_priced"] > 0:
-            cost["era"] = s["era"]
-            cost["release_date"] = s["release_date"]
-            results.append(cost)
+    for r in rows:
+        results.append({
+            "set_id": r["set_id"],
+            "set_name": r["set_name"],
+            "era": r["era"],
+            "release_date": r["release_date"],
+            "total_cards": r["total_cards"],
+            "cards_priced": r["cards_priced"],
+            "cards_missing": r["total_cards"] - r["cards_priced"],
+            "total_market": round(r["total_market"], 2),
+            "total_low": round(r["total_low"], 2),
+        })
 
     return render_template("completion.html", sets=results)
 

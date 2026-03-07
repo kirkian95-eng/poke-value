@@ -168,12 +168,9 @@ def get_set_completion_cost(set_id):
 def get_rip_or_flip(set_id):
     """Compare sealed product prices vs EV of contents for a set.
 
+    Reads EV from cache. Only recalculates if no cache exists.
     Returns list of sealed products with rip/flip verdict and margin.
     """
-    # Get EV per pack
-    ev_result = calculate_set_ev(set_id)
-    ev_per_pack = ev_result.get("ev_per_pack", 0) if ev_result else 0
-
     with get_db() as conn:
         set_row = conn.execute(
             "SELECT id, name FROM sets WHERE id = ?", (set_id,)
@@ -181,12 +178,33 @@ def get_rip_or_flip(set_id):
         if not set_row:
             return None
 
+        # Read from cache first, only recalculate if missing
+        ev_row = conn.execute(
+            "SELECT ev_per_pack FROM ev_cache WHERE set_id = ?", (set_id,)
+        ).fetchone()
+
         products = conn.execute("""
             SELECT id, name, product_type, tcg_market, tcg_low
             FROM sealed_products
             WHERE set_id = ?
             ORDER BY tcg_market DESC
         """, (set_id,)).fetchall()
+
+        total_cards = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE set_id = ?", (set_id,)
+        ).fetchone()[0]
+        cards_priced = conn.execute("""
+            SELECT COUNT(*) FROM prices p JOIN cards c ON p.card_id = c.id
+            WHERE c.set_id = ? AND p.tcg_market > 0
+        """, (set_id,)).fetchone()[0]
+
+    if ev_row and ev_row["ev_per_pack"]:
+        ev_per_pack = ev_row["ev_per_pack"]
+    else:
+        ev_result = calculate_set_ev(set_id)
+        ev_per_pack = ev_result.get("ev_per_pack", 0) if ev_result else 0
+
+    coverage = cards_priced / max(total_cards, 1)
 
     results = []
     for p in products:
@@ -218,8 +236,6 @@ def get_rip_or_flip(set_id):
         else:
             verdict = "even"
 
-        # Confidence based on price data coverage
-        coverage = ev_result.get("cards_with_prices", 0) / max(ev_result.get("total_cards", 1), 1)
         if coverage >= 0.9:
             confidence = "high"
         elif coverage >= 0.7:
@@ -997,8 +1013,6 @@ def global_search(query, limit=500):
     elif _SEALED_KEYWORDS.search(q):
         intent = "sealed"
     elif sets and not cards:
-        intent = "sets"
-    elif len(sets) > 0 and len(cards) == 0:
         intent = "sets"
     else:
         intent = "cards"

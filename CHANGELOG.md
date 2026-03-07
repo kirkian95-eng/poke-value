@@ -4,6 +4,20 @@ All notable changes to poke-value.
 
 ---
 
+## 2026-03-07 — Code Review Fixes
+
+### Fixed
+- **Rip-or-flip recalculation storm** — `get_rip_or_flip()` was calling `calculate_set_ev()` (full recalculation + DB write) on every invocation instead of reading from `ev_cache`. The rip-or-flip page was triggering this for every set. Now reads cache first, only recalculates if missing.
+- **N+1 graded price queries** — `calculate_graded_ev()` opened a new DB connection per card to look up graded prices. Now batch-loads all graded prices for the set in one query and passes the map.
+- **Grade distribution remainder** — `_GRADE_DIST` probabilities for vintage eras sum to <1.0 (e.g., Base = 0.84). The 16% remainder (grades below 6) was implicitly treated as $0 value. Now uses raw card price for the remainder probability.
+- **Double-counted "Cards Priced"** — Set detail page counted cards with both TCG market and CM trend prices twice. Now only counts TCG market.
+- **Dead code in search intent detection** — Removed duplicate condition in `global_search()` (two identical `sets and not cards` branches).
+- **PriceCharting slug `&` bug** — `_slugify_set_name()` replaced `&` with HTML entity `&amp;` instead of `and`, producing broken URLs for sets like "Ruby & Sapphire".
+- **P(profit) used hardcoded $4.49 MSRP** — Pack distribution stats now use real pack price from `ev_cache`. Histogram bin edges and color thresholds also use real pack price. Vintage sets no longer show misleading "P(Beat MSRP)" stats against $4.49.
+- **Completion page O(N) queries** — Was calling `get_set_completion_cost()` per set (2 queries each, ~200 sets = ~400 queries). Now uses a single aggregate SQL query for the overview page. Per-set detail view still uses the full function.
+
+---
+
 ## 2026-03-07 — Graded EV Model, Sorting Fix, Real Pack Prices
 
 ### Added

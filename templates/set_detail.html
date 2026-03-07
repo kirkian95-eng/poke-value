@@ -43,7 +43,7 @@
     <div class="stat">
         <div class="label">Cards Priced</div>
         <div class="value" style="color:#64b5f6;">
-            {{ cards|selectattr('tcg_market')|list|length + cards|selectattr('cm_trend')|list|length }}/{{ cards|length }}
+            {{ cards|selectattr('tcg_market')|list|length }}/{{ cards|length }}
         </div>
     </div>
     <div class="stat">
@@ -167,7 +167,7 @@
             <div style="font-size:1.4rem;font-weight:bold;color:#64b5f6;">${{ "%.2f"|format(distribution.stats.median) }}</div>
         </div>
         <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:0.8rem 1.2rem;text-align:center;min-width:120px;">
-            <div style="font-size:0.75rem;color:#78909c;text-transform:uppercase;">P(Beat MSRP)</div>
+            <div style="font-size:0.75rem;color:#78909c;text-transform:uppercase;">P(Beat Pack $)</div>
             <div style="font-size:1.4rem;font-weight:bold;{% if distribution.stats.p_profit >= 50 %}color:#66bb6a;{% elif distribution.stats.p_profit >= 20 %}color:#ffd700;{% else %}color:#ef5350;{% endif %}">{{ distribution.stats.p_profit }}%</div>
         </div>
         <div style="background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:0.8rem 1.2rem;text-align:center;min-width:120px;">
@@ -210,9 +210,10 @@
         var bins = {{ distribution.histogram | tojson }};
         var labels = bins.map(function(b) { return b.label; });
         var data = bins.map(function(b) { return b.probability; });
+        var packPrice = {{ ev_cache.pack_price if ev_cache and ev_cache.pack_price else 4.49 }};
         var colors = bins.map(function(b) {
-            if (b.min_val >= 4.49) return '#66bb6a';
-            if (b.min_val >= 2) return '#ffd700';
+            if (b.min_val >= packPrice) return '#66bb6a';
+            if (b.min_val >= packPrice * 0.5) return '#ffd700';
             return '#ef5350';
         });
         createChart('dist-chart', 'bar', {

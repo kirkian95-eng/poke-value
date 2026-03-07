@@ -4,6 +4,18 @@ Architecture decisions, tradeoffs, and rationale for poke-value.
 
 ---
 
+## #22 Rip-or-Flip Reads Cache, Not Recalculate
+
+**Date:** 2026-03-07
+
+**Decision:** `get_rip_or_flip()` now reads EV from `ev_cache` instead of calling `calculate_set_ev()` on every invocation. Only recalculates if no cache exists.
+
+**Why:** The rip-or-flip page loops over every set with sealed products. Calling `calculate_set_ev()` per set was doing full EV recalculation + DB write for each one — dozens of sets. This turned a simple read-heavy page into a write-heavy one that also clobbered cache timestamps.
+
+**Tradeoff:** EV data shown may be slightly stale if cache was built from an earlier price update. This is acceptable since the cron job rebuilds EV cache during price updates.
+
+---
+
 ## #21 Graded EV Model — Multiplier Approach
 
 **Date:** 2026-03-07

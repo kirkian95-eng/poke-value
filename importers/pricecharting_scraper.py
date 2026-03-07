@@ -164,7 +164,7 @@ _SET_SLUG_OVERRIDES = {
 def _slugify_set_name(name):
     """Convert our set name to PriceCharting URL slug."""
     slug = name.lower().strip()
-    slug = slug.replace("&", "&").replace("'", "").replace(":", "")
+    slug = slug.replace("&", "and").replace("'", "").replace(":", "")
     slug = re.sub(r"[^a-z0-9\s&-]", "", slug)
     slug = re.sub(r"\s+", "-", slug)
     return f"pokemon-{slug}"

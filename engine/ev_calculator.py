@@ -277,6 +277,14 @@ def calculate_pack_distribution(set_id):
             WHERE c.set_id = ?
         """, (set_id,)).fetchall()
 
+        # Use real pack price from ev_cache if available
+        pack_row = conn.execute(
+            "SELECT pack_price FROM ev_cache WHERE set_id = ?", (set_id,)
+        ).fetchone()
+
+    pack_price = (pack_row["pack_price"] if pack_row and pack_row["pack_price"]
+                  else DEFAULT_PACK_MSRP)
+
     cards = [dict(r) for r in rows]
     if not cards:
         return {"outcomes": [], "histogram": [], "stats": {}}
@@ -371,8 +379,7 @@ def calculate_pack_distribution(set_id):
             found_p99 = True
 
     # P(pack >= threshold) = sum of probabilities where value >= threshold
-    msrp = DEFAULT_PACK_MSRP
-    p_profit = sum(o["probability"] for o in outcomes if o["value"] >= msrp) / total_prob if total_prob > 0 else 0
+    p_profit = sum(o["probability"] for o in outcomes if o["value"] >= pack_price) / total_prob if total_prob > 0 else 0
     p_10 = sum(o["probability"] for o in outcomes if o["value"] >= 10) / total_prob if total_prob > 0 else 0
     p_20 = sum(o["probability"] for o in outcomes if o["value"] >= 20) / total_prob if total_prob > 0 else 0
     p_50 = sum(o["probability"] for o in outcomes if o["value"] >= 50) / total_prob if total_prob > 0 else 0
@@ -384,9 +391,14 @@ def calculate_pack_distribution(set_id):
     elif max_val <= 30:
         bin_edges = [0, 1, 2, 3, 5, 10, 15, 20, 30]
     elif max_val <= 60:
-        bin_edges = [0, 2, 4.49, 5, 10, 20, 30, 50, 60]
+        bin_edges = [0, 2, 5, 10, 20, 30, 50, 60]
     else:
-        bin_edges = [0, 2, 4.49, 5, 10, 20, 50, 100, max_val + 1]
+        bin_edges = [0, 2, 5, 10, 20, 50, 100, max_val + 1]
+
+    # Insert pack_price as a bin edge if it fits within range
+    if 2 < pack_price < max_val and pack_price not in bin_edges:
+        bin_edges.append(pack_price)
+        bin_edges.sort()
 
     # Ensure max_val is covered
     if bin_edges[-1] <= max_val:
@@ -423,7 +435,7 @@ def calculate_pack_distribution(set_id):
         "p_20": round(p_20 * 100, 1),
         "p_50": round(p_50 * 100, 1),
         "base_value": round(base_value, 2),
-        "msrp": msrp,
+        "pack_price": round(pack_price, 2),
     }
 
     return {
@@ -461,13 +473,18 @@ _GRADE_MULT_VINTAGE = {10: 12.0, 9: 3.5, 8: 1.5, 7: 1.0, 6: 0.75}
 _MODERN_ERAS = {"sv", "mega", "swsh", "sm"}
 
 
-def _expected_graded_value(card_id, raw_price, era):
+def _expected_graded_value(card_id, raw_price, era, graded_prices_map=None):
     """
     Estimate the expected graded value of a card.
 
-    Uses actual graded prices from DB when available, otherwise applies
-    era-based grade multipliers to the raw price. Weights by pack-fresh
-    grade distribution for the era.
+    Uses actual graded prices from graded_prices_map when available,
+    otherwise applies era-based grade multipliers to the raw price.
+    Weights by pack-fresh grade distribution for the era.
+    Remainder probability (grades below 6) uses raw price.
+
+    Args:
+        graded_prices_map: dict of {card_id: {int_grade: price}} pre-loaded
+            from DB. If None, will query DB (slower, avoid in loops).
 
     Returns the expected value (before grading fee).
     """
@@ -476,29 +493,37 @@ def _expected_graded_value(card_id, raw_price, era):
 
     grade_dist = _GRADE_DIST.get(era, _GRADE_DIST.get("sv"))
 
-    # Try to get actual graded prices from DB
-    with get_db() as conn:
-        graded = conn.execute("""
-            SELECT grade, market_price FROM graded_prices
-            WHERE card_id = ? AND market_price > 0
-        """, (card_id,)).fetchall()
-
-    graded_map = {}
-    for g in graded:
-        grade_str = g["grade"].replace("Grade ", "")
-        try:
-            graded_map[int(grade_str)] = g["market_price"]
-        except ValueError:
-            pass
+    # Get graded prices for this card
+    if graded_prices_map is not None:
+        graded_map = graded_prices_map.get(card_id, {})
+    else:
+        with get_db() as conn:
+            graded = conn.execute("""
+                SELECT grade, market_price FROM graded_prices
+                WHERE card_id = ? AND market_price > 0
+            """, (card_id,)).fetchall()
+        graded_map = {}
+        for g in graded:
+            grade_str = g["grade"].replace("Grade ", "")
+            try:
+                graded_map[int(grade_str)] = g["market_price"]
+            except ValueError:
+                pass
 
     # Calculate expected value across grade distribution
     mults = _GRADE_MULT_MODERN if era in _MODERN_ERAS else _GRADE_MULT_VINTAGE
     ev = 0.0
+    dist_total = sum(grade_dist.values())
     for grade, prob in grade_dist.items():
         if grade in graded_map:
             ev += prob * graded_map[grade]
         else:
             ev += prob * raw_price * mults.get(grade, 0.8)
+
+    # Remainder probability (grades below 6) — assume raw price value
+    remainder = 1.0 - dist_total
+    if remainder > 0:
+        ev += remainder * raw_price
 
     return ev
 
@@ -528,11 +553,29 @@ def calculate_graded_ev(set_id, grading_fee=20.0):
             "SELECT name, era FROM sets WHERE id = ?", (set_id,)
         ).fetchone()
 
+        # Batch-load all graded prices for cards in this set
+        gp_rows = conn.execute("""
+            SELECT gp.card_id, gp.grade, gp.market_price
+            FROM graded_prices gp
+            JOIN cards c ON gp.card_id = c.id
+            WHERE c.set_id = ? AND gp.market_price > 0
+        """, (set_id,)).fetchall()
+
     if not set_info:
         return None
 
     era = set_info["era"] or "sv"
     cards = [dict(r) for r in rows]
+
+    # Build graded prices map: {card_id: {int_grade: price}}
+    graded_prices_map = {}
+    for g in gp_rows:
+        grade_str = g["grade"].replace("Grade ", "")
+        try:
+            grade_int = int(grade_str)
+        except ValueError:
+            continue
+        graded_prices_map.setdefault(g["card_id"], {})[grade_int] = g["market_price"]
 
     by_rarity = {}
     for card in cards:
@@ -584,7 +627,7 @@ def calculate_graded_ev(set_id, grading_fee=20.0):
 
         for card in rarity_cards:
             raw = _get_price(card)
-            graded_val = _expected_graded_value(card["id"], raw, era)
+            graded_val = _expected_graded_value(card["id"], raw, era, graded_prices_map)
             # Net graded value: only grade if it beats raw - fee
             net_graded = max(raw, graded_val - grading_fee)
             rarity_graded_ev += p_each * net_graded
